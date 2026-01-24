@@ -3,7 +3,7 @@
 #include <vector>
 
 Cinema::Cinema()
-    : cinemaState(CinemaState::SELLING), color{ 255, 255, 255 }, frameCounter(0)
+    : cinemaState(CinemaState::SELLING), movieFrame(0), frameCounter(0)
 {
     // Sva sedišta su AVAILABLE na po?etku
     for (int r = 0; r < ROWS; r++) {
@@ -140,9 +140,9 @@ void Cinema::StandUp() {
     }
 }
 
-std::array<int, 3> Cinema::GetColor()
+int Cinema::GetMovieFrame()
 {
-    return color;
+    return movieFrame;
 }
 
 void Cinema::SwitchState() {
@@ -163,17 +163,13 @@ void Cinema::SwitchState() {
 void Cinema::IncreaseFrameCounter() {
     frameCounter = (frameCounter + 1) % 20;
     if (frameCounter == 0) {
-        color[0] = getRandom0toX(255);
-        color[1] = getRandom0toX(255);
-        color[2] = getRandom0toX(255);
+        movieFrame = getRandom0toX(25);
     }
 }
 
 void Cinema::ResetFrameCounter() {
     frameCounter = 0;
-    color[0] = 255;
-    color[1] = 255;
-    color[2] = 255;
+    movieFrame = 0;
 }
 
 int Cinema::getRandom0toX(int n) {

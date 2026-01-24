@@ -31,8 +31,7 @@ private:
 
     CinemaState cinemaState;
 
-    // Boja RGB (0–255)
-    std::array<int, 3> color;
+    int movieFrame;
 
     int frameCounter;
 
@@ -52,7 +51,7 @@ public:
     void ResetSelectedSeats();
     void SitOnSeats();
     void StandUp();
-    std::array<int, 3> GetColor();
+    int GetMovieFrame();
     void SwitchState();
     void IncreaseFrameCounter();
     void ResetFrameCounter();

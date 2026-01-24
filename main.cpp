@@ -1,6 +1,7 @@
 ﻿#include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -11,12 +12,31 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Util.h"
+#include "Cuboid.hpp"
+#include "Light.hpp"
 
 unsigned int screenHeight = 1000;
 unsigned int screenWidth = 1000;
 
-bool useTex = false;
-bool transparent = false;
+float speed = 0.4f;
+
+// GLOBALNE PROMENLJIVE ZA PROSTORIJU
+const float ROOM_WIDTH = 20.0f;
+const float ROOM_HEIGHT = 10.0f;
+const float ROOM_DEPTH = 30.0f;
+const glm::vec3 ROOM_FRONT_TOP_LEFT = glm::vec3(-ROOM_WIDTH / 2, ROOM_HEIGHT - 2.0f, -8.0f);
+
+// PLATNO
+const float SCREEN_WIDTH = 16.33f;
+const float SCREEN_HEIGHT = 7.0f;
+const float SCREEN_Z = ROOM_FRONT_TOP_LEFT.z + 0.01f; // Skoro na zadnjem zidu
+const glm::vec3 SCREEN_CENTER = glm::vec3(1.0f, ROOM_HEIGHT * 0.4f, SCREEN_Z);
+
+// STEPENIŠTE
+const int NUM_STEPS = 6;              // Broj stepenika
+const float STEP_HEIGHT = 0.7f;       // Visina svakog koraka
+const float STEP_DEPTH = 2.0f;        // Dužina svakog koraka
+const float DISTANCE_FROM_SCREEN = 9.5f; // Udaljenost prvog koraka od platna
 
 int endProgram(std::string message) {
     std::cout << message << std::endl;
@@ -24,36 +44,21 @@ int endProgram(std::string message) {
     return -1;
 }
 
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_G && action == GLFW_PRESS) {
-        useTex = !useTex;
-    }
-    if (key == GLFW_KEY_T && action == GLFW_PRESS) {
-        transparent = !transparent;
-    }
-}
-
 unsigned int preprocessTexture(const char* filepath) {
-    unsigned int texture = loadImageToTexture(filepath); // Učitavanje teksture
-    glBindTexture(GL_TEXTURE_2D, texture); // Vezujemo se za teksturu kako bismo je podesili
-
-    // Generisanje mipmapa - predefinisani različiti formati za lakše skaliranje po potrebi (npr. da postoji 32 x 32 verzija slike, ali i 16 x 16, 256 x 256...)
+    unsigned int texture = loadImageToTexture(filepath);
+    glBindTexture(GL_TEXTURE_2D, texture);
     glGenerateMipmap(GL_TEXTURE_2D);
-
-    // Podešavanje strategija za wrap-ovanje - šta da radi kada se dimenzije teksture i poligona ne poklapaju
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // S - tekseli po x-osi
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); // T - tekseli po y-osi
-
-    // Podešavanje algoritma za smanjivanje i povećavanje rezolucije: nearest - bira najbliži piksel, linear - usrednjava okolne piksele
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     return texture;
 }
 
 bool firstMouse = true;
-float lastX, lastY = 500.0f; // Ekran nam je 1000 x 1000 piksela, kursor je inicijalno na sredini
-float yaw = -90.0f, pitch = 0.0f; // yaw -90: kamera gleda u pravcu z ose; pitch = 0: kamera gleda vodoravno
-glm::vec3 cameraFront = glm::vec3(0.0, 0.0, -1.0); // at-vektor je inicijalno u pravcu z ose
+float lastX, lastY = 500.0f;
+float yaw = -90.0f, pitch = 0.0f;
+glm::vec3 cameraFront = glm::vec3(0.0, 0.0, -1.0);
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {
@@ -87,6 +92,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
     direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
     cameraFront = glm::normalize(direction);
 }
+
 float fov = 45.0f;
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
@@ -98,11 +104,75 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
         fov = 45.0f;
 }
 
+// Funkcija za proveru da li je pozicija unutar prostorije
+bool isPositionValid(glm::vec3 pos) {
+    // Konstante za granice prostorije sa malim offsetom (0.5 jedinice od zida)
+    const float MARGIN = 0.5f;
+
+    float minX = -ROOM_WIDTH / 2.0f + MARGIN;
+    float maxX = ROOM_WIDTH / 2.0f - MARGIN;
+    float minY = ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT + MARGIN;
+    float maxY = ROOM_FRONT_TOP_LEFT.y - MARGIN;
+    float minZ = ROOM_FRONT_TOP_LEFT.z + MARGIN;
+    float maxZ = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH - MARGIN;
+
+    // Provera granica prostorije
+    if (pos.x < minX || pos.x > maxX) return false;
+    if (pos.y < minY || pos.y > maxY) return false;
+    if (pos.z < minZ || pos.z > maxZ) return false;
+
+    // Provera kolizije sa platnom (malo ispred platna)
+    float screenMinX = SCREEN_CENTER.x - SCREEN_WIDTH / 2.0f - MARGIN;
+    float screenMaxX = SCREEN_CENTER.x + SCREEN_WIDTH / 2.0f + MARGIN;
+    float screenMinY = SCREEN_CENTER.y - SCREEN_HEIGHT / 2.0f - MARGIN;
+    float screenMaxY = SCREEN_CENTER.y + SCREEN_HEIGHT / 2.0f + MARGIN;
+    float screenZ = SCREEN_Z + MARGIN;
+
+    if (pos.x >= screenMinX && pos.x <= screenMaxX &&
+        pos.y >= screenMinY && pos.y <= screenMaxY &&
+        pos.z <= screenZ) {
+        return false;
+    }
+
+    // Provera kolizije sa stepeništem
+    float stepZ = SCREEN_Z + DISTANCE_FROM_SCREEN;
+    float stepY = ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT;
+
+    for (int i = 0; i < NUM_STEPS; i++) {
+        float currentStepDepth = STEP_DEPTH;
+        if (i == NUM_STEPS - 1) {
+            currentStepDepth = ROOM_DEPTH - stepZ + SCREEN_Z;
+        }
+
+        float stepMinZ = stepZ;
+        float stepMaxZ = stepZ + currentStepDepth + MARGIN;
+        float stepMinY = stepY;
+        float stepMaxY = stepY + STEP_HEIGHT + MARGIN;
+
+        // Ako je kamera ispod stepenice i unutar njenog Z i X opsega
+        if (pos.y >= stepMinY && pos.y <= stepMaxY &&
+            pos.z >= stepMinZ && pos.z <= stepMaxZ) {
+            return false;
+        }
+
+        // Ako pokušava da prođe kroz stepenicu sa strane ili ispod
+        if (pos.y < stepMaxY &&
+            pos.z >= stepMinZ && pos.z <= stepMaxZ) {
+            return false;
+        }
+
+        stepZ += STEP_DEPTH;
+        stepY += STEP_HEIGHT;
+    }
+
+    return true;
+}
+
 int main(void)
 {
     if (!glfwInit())
     {
-        std::cout<<"GLFW Biblioteka se nije ucitala! :(\n";
+        std::cout << "GLFW Biblioteka se nije ucitala! :(\n";
         return 1;
     }
 
@@ -110,218 +180,208 @@ int main(void)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Formiranje prozora za prikaz sa datim dimenzijama i naslovom
     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
     screenWidth = mode->width;
     screenHeight = mode->height;
-    // Uzimaju se širina i visina monitora
-    // Moguće je igrati se sa aspect ratio-m dodavanjem frame buffer size callback-a
+
     GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "Bioskop", monitor, NULL);
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
     if (glewInit() != GLEW_OK) return endProgram("GLEW nije uspeo da se inicijalizuje.");
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    glfwSetKeyCallback(window, keyCallback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-    
-    if (window == NULL)
-    {
-        std::cout << "Prozor nije napravljen! :(\n";
-        glfwTerminate();
-        return 2;
-    }
-    
-    glfwMakeContextCurrent(window);
 
-    
-    if (glewInit() != GLEW_OK)
-    {
-        std::cout << "GLEW nije mogao da se ucita! :'(\n";
-        return 3;
-    }
-    
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // ++++++++++++++++++++++++++++++++++++++++++++++++++++++ PROMJENLJIVE I BAFERI +++++++++++++++++++++++++++++++++++++++++++++++++
-    
+    // Kreiranje shadera
     unsigned int unifiedShader = createShader("basic.vert", "basic.frag");
     glUseProgram(unifiedShader);
     glUniform1i(glGetUniformLocation(unifiedShader, "uTex"), 0);
 
-    unsigned int dice[6] = { };
-    for (int i = 0; i < 6; ++i) {
-        std::string path = "res/dice" + std::to_string(i + 1) + ".png";
-        dice[i] = preprocessTexture(path.c_str());
-    }
-
-    float vertices[] =
-    {
-      //X    Y    Z      R    G    B    A         S   T
-        // Prednja strana (1)
-        0.1, 0.1, 0.1,   1.0, 0.0, 0.0, 1.0,      0,  0,    0, 0, 1,
-       -0.1, 0.1, 0.1,   1.0, 0.0, 0.0, 1.0,      1,  0,    0, 0, 1,
-       -0.1,-0.1, 0.1,   1.0, 0.0, 0.0, 1.0,      1,  1,    0, 0, 1,
-        0.1,-0.1, 0.1,   1.0, 0.0, 0.0, 1.0,      0,  1,    0, 0, 1,
-       
-        // Leva strana (2)
-       -0.1, 0.1, 0.1,   0.0, 0.0, 1.0, 1.0,      0,  0,    -1, 0, 0,
-       -0.1, 0.1,-0.1,   0.0, 0.0, 1.0, 1.0,      1,  0,    -1, 0, 0,
-       -0.1,-0.1,-0.1,   0.0, 0.0, 1.0, 1.0,      1,  1,    -1, 0, 0,
-       -0.1,-0.1, 0.1,   0.0, 0.0, 1.0, 1.0,      0,  1,    -1, 0, 0,
-       
-        // Donja strana (3)
-        0.1,-0.1, 0.1,   1.0, 1.0, 1.0, 1.0,      0,  0,    0, -1, 0,
-       -0.1,-0.1, 0.1,   1.0, 1.0, 1.0, 1.0,      1,  0,    0, -1, 0,
-       -0.1,-0.1,-0.1,   1.0, 1.0, 1.0, 1.0,      1,  1,    0, -1, 0,
-        0.1,-0.1,-0.1,   1.0, 1.0, 1.0, 1.0,      0,  1,    0, -1, 0,
-
-        // Gornja strana (4)
-        0.1, 0.1, 0.1,   1.0, 1.0, 0.0, 1.0,      0,  0,    0, 1, 0,
-        0.1, 0.1,-0.1,   1.0, 1.0, 0.0, 1.0,      1,  0,    0, 1, 0,
-       -0.1, 0.1,-0.1,   1.0, 1.0, 0.0, 1.0,      1,  1,    0, 1, 0,
-       -0.1, 0.1, 0.1,   1.0, 1.0, 0.0, 1.0,      0,  1,    0, 1, 0,
-
-        // Desna strana (5)
-        0.1, 0.1, 0.1,   0.0, 1.0, 0.0, 1.0,      0,  0,    1, 0, 0,
-        0.1,-0.1, 0.1,   0.0, 1.0, 0.0, 1.0,      1,  0,    1, 0, 0,
-        0.1,-0.1,-0.1,   0.0, 1.0, 0.0, 1.0,      1,  1,    1, 0, 0,
-        0.1, 0.1,-0.1,   0.0, 1.0, 0.0, 1.0,      0,  1,    1, 0, 0,
-        
-        // Zadnja strana (6)
-        0.1, 0.1,-0.1,   1.0, 0.5, 0.0, 1.0,      0,  0,    0, 0, -1,
-        0.1,-0.1,-0.1,   1.0, 0.5, 0.0, 1.0,      1,  0,    0, 0, -1,
-       -0.1,-0.1,-0.1,   1.0, 0.5, 0.0, 1.0,      1,  1,    0, 0, -1,
-       -0.1, 0.1,-0.1,   1.0, 0.5, 0.0, 1.0,      0,  1,    0, 0, -1,
+    // Definisanje boja za svaku stranu KORISTEĆI GLOBALNE KONSTANTE
+    std::vector<glm::vec4> roomColors = {
+        glm::vec4(0.05, 0.05, 0.05, 1.0),  // Prednja
+        glm::vec4(0.32, 0.1, 0.1, 1.0),    // Leva
+        glm::vec4(0.24, 0.16, 0.16, 1.0),  // Donja
+        glm::vec4(0.2, 0.2, 0.2, 1.0),     // Gornja
+        glm::vec4(0.32, 0.1, 0.1, 1.0),    // Desna
+        glm::vec4(0.32, 0.1, 0.1, 1.0)     // Zadnja
     };
-    unsigned int stride = (3 + 4 + 2 + 3) * sizeof(float); 
-    
-    unsigned int VAO;
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
 
-    unsigned int VBO;
-    glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    // Kreiranje prostorije
+    CuboidData room = createCuboid(
+        ROOM_FRONT_TOP_LEFT,
+        ROOM_WIDTH,
+        ROOM_HEIGHT,
+        ROOM_DEPTH,
+        roomColors,
+        {},
+        true
+    );
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(10 * sizeof(float)));
-    glEnableVertexAttribArray(2);
+    // Kreiranje platna (beli pravougaonik)
+    RectangleData screen = createRectangle(
+        SCREEN_CENTER,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Bela boja
+        0,  // Bez teksture (možeš dodati teksturu kasnije)
+        true // Okrenut ka kameri
+    );
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-    
+    StaircaseData staircase = createStaircase(
+        DISTANCE_FROM_SCREEN,
+        STEP_HEIGHT,
+        STEP_DEPTH,
+        NUM_STEPS,
+        glm::vec4(0.24, 0.16, 0.16, 1.0),
+        ROOM_WIDTH,
+        ROOM_HEIGHT,
+        ROOM_DEPTH,
+        ROOM_FRONT_TOP_LEFT.z,
+        SCREEN_Z,
+        ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT
+    );
 
-    // ++++++++++++++++++++++++++++++++++++++++++++++++++++++            UNIFORME            +++++++++++++++++++++++++++++++++++++++++++++++++
+    // Svetla na plafonu - koriste globalne konstante
+    std::vector<Light> lights;
 
-    glm::mat4 model = glm::mat4(1.0f); //Matrica transformacija - mat4(1.0f) generise jedinicnu matricu
+    float ceilingY = ROOM_FRONT_TOP_LEFT.y - 0.2f; // Malo ispod plafona
+    float lightZ1 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.25f;
+    float lightZ2 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.5f;
+    float lightZ3 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.75f;
+
+    lights.push_back(Light(
+        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ1),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(1.3f, 1.3f, 1.6f),
+        glm::vec3(0.3f, 0.3f, 0.3f),
+        1.0f, 0.045f, 0.0075f
+    ));
+
+    lights.push_back(Light(
+        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ1),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(1.3f, 1.3f, 1.6f),
+        glm::vec3(0.3f, 0.3f, 0.3f),
+        1.0f, 0.045f, 0.0075f
+    ));
+
+    lights.push_back(Light(
+        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ2),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(1.3f, 1.3f, 1.6f),
+        glm::vec3(0.3f, 0.3f, 0.3f),
+        1.0f, 0.045f, 0.0075f
+    ));
+
+    lights.push_back(Light(
+        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ2),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(1.3f, 1.3f, 1.6f),
+        glm::vec3(0.3f, 0.3f, 0.3f),
+        1.0f, 0.045f, 0.0075f
+    ));
+
+    lights.push_back(Light(
+        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ3),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(1.3f, 1.3f, 1.6f),
+        glm::vec3(0.3f, 0.3f, 0.3f),
+        1.0f, 0.045f, 0.0075f
+    ));
+
+    lights.push_back(Light(
+        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ3),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(1.3f, 1.3f, 1.6f),
+        glm::vec3(0.3f, 0.3f, 0.3f),
+        1.0f, 0.045f, 0.0075f
+    ));
+
+    // Uniforme
+    glm::mat4 model = glm::mat4(1.0f);
     unsigned int modelLoc = glGetUniformLocation(unifiedShader, "uM");
-    
-    glm::mat4 view; //Matrica pogleda (kamere)
+
     glm::vec3 cameraPos = glm::vec3(0.0, 0.0, 2.0);
     glm::vec3 cameraUp = glm::vec3(0.0, 1.0, 0.0);
-
-    view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp); // lookAt(Gdje je kamera, u sta kamera gleda, jedinicni vektor pozitivne Y ose svijeta  - ovo rotira kameru)
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
     unsigned int viewLoc = glGetUniformLocation(unifiedShader, "uV");
-    
-    
-    glm::mat4 projectionP = glm::perspective(glm::radians(fov), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f); //Matrica perspektivne projekcije (FOV, Aspect Ratio, prednja ravan, zadnja ravan)
-    glm::mat4 projectionO = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, 0.1f, 100.0f); //Matrica ortogonalne projekcije (Lijeva, desna, donja, gornja, prednja i zadnja ravan)
+
+    glm::mat4 projectionP = glm::perspective(glm::radians(fov), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
     unsigned int projectionLoc = glGetUniformLocation(unifiedShader, "uP");
 
-
-    // ++++++++++++++++++++++++++++++++++++++++++++++++++++++ RENDER LOOP - PETLJA ZA CRTANJE +++++++++++++++++++++++++++++++++++++++++++++++++
-    glUseProgram(unifiedShader); //Slanje default vrijednosti uniformi
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model)); //(Adresa matrice, broj matrica koje saljemo, da li treba da se transponuju, pokazivac do matrica)
+    // Render loop
+    glUseProgram(unifiedShader);
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projectionO));
-    glBindVertexArray(VAO);
+    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projectionP));
 
     glClearColor(0.5, 0.5, 0.5, 1.0);
-    glCullFace(GL_BACK);//Biranje lica koje ce se eliminisati (tek nakon sto ukljucimo Face Culling)
+
+    // Omogućavanje depth testiranja i face cullinga - standardno i efikasno
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 
     while (!glfwWindowShouldClose(window))
     {
         double startTime = glfwGetTime();
+
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         {
             glfwSetWindowShouldClose(window, GL_TRUE);
         }
 
-        //Testiranje dubine
-        if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS)
+        // Čuvamo staru poziciju pre nego što je promenimo
+        glm::vec3 oldCameraPos = cameraPos;
+        glm::vec3 newCameraPos = cameraPos;
+
+        // Kretanje kamere strelicama - kalkulišemo novu poziciju
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         {
-            glEnable(GL_DEPTH_TEST); //Ukljucivanje testiranja Z bafera
+            newCameraPos += speed * glm::normalize(glm::vec3(cameraFront.z, 0, -cameraFront.x));
         }
-        if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS)
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         {
-            glDisable(GL_DEPTH_TEST);
+            newCameraPos -= speed * glm::normalize(glm::vec3(cameraFront.z, 0, -cameraFront.x));
+        }
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        {
+            newCameraPos += speed * glm::normalize(glm::vec3(cameraFront.x, cameraFront.y, cameraFront.z));
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        {
+            newCameraPos -= speed * glm::normalize(glm::vec3(cameraFront.x, cameraFront.y, cameraFront.z));
         }
 
-        //Odstranjivanje lica (Prethodno smo podesili koje lice uklanjamo sa glCullFace)
-        if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS)
-        {
-            glEnable(GL_CULL_FACE);
+        // Provera validnosti nove pozicije
+        if (isPositionValid(newCameraPos)) {
+            cameraPos = newCameraPos;
         }
-        if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS)
-        {
-            glDisable(GL_CULL_FACE);
+        else {
+            // Pokušaj da klizi duž zida - proveri X i Z odvojeno
+            glm::vec3 tryX = glm::vec3(newCameraPos.x, oldCameraPos.y, oldCameraPos.z);
+            glm::vec3 tryY = glm::vec3(oldCameraPos.x, newCameraPos.y, oldCameraPos.z);
+            glm::vec3 tryZ = glm::vec3(oldCameraPos.x, oldCameraPos.y, newCameraPos.z);
+
+            if (isPositionValid(tryX)) {
+                cameraPos.x = newCameraPos.x;
+            }
+            if (isPositionValid(tryY)) {
+                cameraPos.y = newCameraPos.y;
+            }
+            if (isPositionValid(tryZ)) {
+                cameraPos.z = newCameraPos.z;
+            }
         }
 
-        //Transformisanje trouglova
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        {
-            //model = glm::translate(model, glm::vec3(-0.01, 0.0, 0.0)); //Pomjeranje (Matrica transformacije, pomjeraj po XYZ)
-            model = glm::rotate(model, glm::radians(-0.5f), glm::vec3(0.0f, 1.0f, 0.0f)); //Rotiranje (Matrica transformacije, ugao rotacije u radijanima, osa rotacije)
-            //model = glm::scale(model, glm::vec3(0.99, 1.0, 1.0)); //Skaliranje (Matrica transformacije, skaliranje po XYZ)
-        }
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        {
-            //model = glm::translate(model, glm::vec3(0.01, 0.0, 0.0));
-            model = glm::rotate(model, glm::radians(0.5f), glm::vec3(0.0f, 1.0f, 0.0f));
-            //model = glm::scale(model, glm::vec3(1.01, 1.0, 1.0));
-        }
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        {
-            //model = glm::translate(model, glm::vec3(0.0, 0.01, 0.0));
-            model = glm::rotate(model, glm::radians(-0.5f), glm::vec3(1.0f, 0.0f, 1.0f));
-            //model = glm::scale(model, glm::vec3(1.0, 1.01, 1.0));
-        }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        {
-            //model = glm::translate(model, glm::vec3(0.0, -0.01, 0.0));
-            model = glm::rotate(model, glm::radians(0.5f), glm::vec3(1.0f, 0.0f, 1.0f));
-            //model = glm::scale(model, glm::vec3(1.0, 0.99, 1.0));
-        }
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
-        {   
-            cameraPos += 0.01f * glm::normalize(glm::vec3(cameraFront.z, 0, -cameraFront.x));
-        }
-        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
-        {
-            cameraPos -= 0.01f * glm::normalize(glm::vec3(cameraFront.z, 0, -cameraFront.x));
-        }
-        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
-        {
-            cameraPos += 0.01f * glm::normalize(glm::vec3(cameraFront.x, 0, cameraFront.z));
-        }
-        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
-        {
-            cameraPos -= 0.01f * glm::normalize(glm::vec3(cameraFront.x, 0, cameraFront.z));
-        }
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); //Osvjezavamo i Z bafer i bafer boje
-        
         glUseProgram(unifiedShader);
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
@@ -331,25 +391,36 @@ int main(void)
         projectionP = glm::perspective(glm::radians(fov), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
         glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projectionP));
 
-        glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), useTex);
-        glUniform1i(glGetUniformLocation(unifiedShader, "transparent"), transparent);
-        glActiveTexture(GL_TEXTURE0);
-        for (int i = 0; i < 6; ++i) {
-            glBindTexture(GL_TEXTURE_2D, dice[i]);
-            glDrawArrays(GL_TRIANGLE_FAN, i * 4, 4);
-        }
+        glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
+        glUniform1i(glGetUniformLocation(unifiedShader, "transparent"), 0);
+
+        setLightsUniforms(unifiedShader, lights);
+        glUniform3fv(glGetUniformLocation(unifiedShader, "viewPos"), 1, &cameraPos[0]);
+
+        // Crtanje prostorije
+        drawCuboid(room);
+
+        // Crtanje platna
+        drawRectangle(screen);
+
+        // Crtanje stepeništa
+        drawStaircase(staircase);
 
         while (glfwGetTime() - startTime < 1.0 / 75) {}
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    // ++++++++++++++++++++++++++++++++++++++++++++++++++++++ POSPREMANJE +++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-    glDeleteBuffers(1, &VBO);
-    glDeleteVertexArrays(1, &VAO);
+    // Čišćenje
+    glDeleteBuffers(1, &room.VBO);
+    glDeleteVertexArrays(1, &room.VAO);
+    glDeleteBuffers(1, &screen.VBO);
+    glDeleteVertexArrays(1, &screen.VAO);
     glDeleteProgram(unifiedShader);
+    for (auto& step : staircase.steps) {
+        glDeleteBuffers(1, &step.VBO);
+        glDeleteVertexArrays(1, &step.VAO);
+    }
 
     glfwTerminate();
     return 0;
