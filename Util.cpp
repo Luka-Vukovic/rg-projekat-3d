@@ -93,6 +93,9 @@ unsigned loadImageToTexture(const char* filePath) {
     int TextureWidth;
     int TextureHeight;
     int TextureChannels;
+
+    stbi_set_flip_vertically_on_load(true);
+
     unsigned char* ImageData =
         stbi_load(filePath, &TextureWidth, &TextureHeight, &TextureChannels, STBI_rgb_alpha);
 

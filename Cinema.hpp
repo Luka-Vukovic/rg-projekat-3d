@@ -35,6 +35,8 @@ private:
 
     int frameCounter;
 
+    std::vector<int> framePool;
+
 public:
     // Konstruktor
     Cinema();
@@ -53,6 +55,7 @@ public:
     void StandUp();
     int GetMovieFrame();
     void SwitchState();
+    void FillAndShufflePool();
     void IncreaseFrameCounter();
     void ResetFrameCounter();
     int getRandom0toX(int n);

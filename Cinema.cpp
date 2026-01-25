@@ -160,16 +160,28 @@ void Cinema::SwitchState() {
     }
 }
 
+void Cinema::FillAndShufflePool() {
+    framePool.clear();
+    for (int i = 0; i < 28; i++) framePool.push_back(i);
+
+    static std::random_device rd;
+    static std::mt19937 g(rd());
+    std::shuffle(framePool.begin(), framePool.end(), g);
+}
+
 void Cinema::IncreaseFrameCounter() {
     frameCounter = (frameCounter + 1) % 20;
     if (frameCounter == 0) {
-        movieFrame = getRandom0toX(25);
+        if (framePool.empty()) {
+            FillAndShufflePool(); // Ako smo "potrošili" film, mešaj opet
+        }
+        movieFrame = framePool.back();
+        framePool.pop_back();
     }
 }
 
 void Cinema::ResetFrameCounter() {
     frameCounter = 0;
-    movieFrame = 0;
 }
 
 int Cinema::getRandom0toX(int n) {

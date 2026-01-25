@@ -14,11 +14,20 @@
 #include "Util.h"
 #include "Cuboid.hpp"
 #include "Light.hpp"
+#include "Cinema.hpp"
+
+Cinema cinema = Cinema();
+
+double enteringStart = NULL;
+double playingStart = NULL;
+double leavingStart = NULL;
 
 unsigned int screenHeight = 1000;
 unsigned int screenWidth = 1000;
 
 float speed = 0.4f;
+
+unsigned screenTextures[28];
 
 // GLOBALNE PROMENLJIVE ZA PROSTORIJU
 const float ROOM_WIDTH = 20.0f;
@@ -102,6 +111,35 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
         fov = 1.0f;
     if (fov > 45.0f)
         fov = 45.0f;
+}
+
+bool numberKeysActive[10] = { false };
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    /*for (int i = 1; i <= 9; i++) {
+        if (key == GLFW_KEY_0 + i || key == GLFW_KEY_KP_0 + i) {
+            if (action == GLFW_PRESS && !numberKeysActive[i]) {
+                cinema.BuySeats(i);
+                numberKeysActive[i] = true;
+            }
+            else if (action == GLFW_RELEASE) {
+                numberKeysActive[i] = false;
+            }
+        }
+    }
+
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }*/
+
+    if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
+        if (enteringStart == NULL && playingStart == NULL && leavingStart == NULL) {
+            enteringStart = glfwGetTime();
+            cinema.SwitchState();
+            cinema.GetRandomTakenSeats();
+            // peopleInitialized = false;
+        }
+    }
 }
 
 // Funkcija za proveru da li je pozicija unutar prostorije
@@ -193,6 +231,12 @@ int main(void)
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
+    glfwSetKeyCallback(window, key_callback);
+
+    for (int i = 0; i < 28; i++) {
+        std::string path = "res/movie_frames/frame" + std::to_string(i + 1) + ".png";
+        screenTextures[i] = preprocessTexture(path.c_str());
+    }
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -328,6 +372,8 @@ int main(void)
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
+    bool hasOpenedDoor = false;
+
     while (!glfwWindowShouldClose(window))
     {
         double startTime = glfwGetTime();
@@ -380,6 +426,54 @@ int main(void)
             }
         }
 
+        if (enteringStart != NULL) {
+            /*if (!peopleInitialized) {
+                InitializePeople(seatWidth, seatHeight, aspect);
+            }
+            UpdatePeoplePositions(deltaTime, aspect);*/
+
+            if (glfwGetTime() - enteringStart > 5) {
+                enteringStart = NULL;
+                cinema.SwitchState();
+                //formDoorVAO(VAOdoor, VBOdoor, aspect);
+                hasOpenedDoor = false;
+                //cinema.SitOnSeats();
+                playingStart = glfwGetTime();
+            }
+            else if (!hasOpenedDoor) {
+                //formDoorVAO(VAOdoor, VBOdoor, aspect);
+                hasOpenedDoor = true;
+            }
+        }
+        else if (playingStart != NULL) {
+            if (glfwGetTime() - playingStart > 20) {
+                playingStart = NULL;
+                cinema.SwitchState();
+                cinema.ResetFrameCounter();
+                screen.texture = 0;
+                //formDoorVAO(VAOdoor, VBOdoor, aspect);
+                //cinema.StandUp();
+                leavingStart = glfwGetTime();
+                //SetupPersonForExit();
+            }
+            else {
+                cinema.IncreaseFrameCounter();
+                screen.texture = screenTextures[cinema.GetMovieFrame()];
+            }
+        }
+        else if (leavingStart != NULL) {
+            //UpdatePeoplePositions(deltaTime, aspect);
+
+            if (glfwGetTime() - leavingStart > 5) {
+                leavingStart = NULL;
+                cinema.SwitchState();
+                //formDoorVAO(VAOdoor, VBOdoor, aspect);
+                cinema.ResetSeats();
+                cinema.ResetSelectedSeats();
+                //ResetPeople();
+            }
+        }
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(unifiedShader);
@@ -398,13 +492,20 @@ int main(void)
         glUniform3fv(glGetUniformLocation(unifiedShader, "viewPos"), 1, &cameraPos[0]);
 
         // Crtanje prostorije
+        glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
         drawCuboid(room);
-
-        // Crtanje platna
-        drawRectangle(screen);
 
         // Crtanje stepeništa
         drawStaircase(staircase);
+
+        if (playingStart != NULL) {
+            glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);
+        }
+        else {
+            // Ako film ne traje, platno je obična bela površina
+            glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
+        }
+        drawRectangle(screen);
 
         while (glfwGetTime() - startTime < 1.0 / 75) {}
         glfwSwapBuffers(window);
