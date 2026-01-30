@@ -35,6 +35,10 @@ RectangleData createRectangle(glm::vec3 center, float width, float height,
 // Funkcija za crtanje pravougaonika
 void drawRectangle(const RectangleData& rectangle);
 
+// Funkcija za kreiranje 2D overlay pravougaonika (za UI elemente)
+RectangleData create2DOverlay(float x, float y, float width, float height,
+    glm::vec4 color, unsigned int texture = 0);
+
 struct StaircaseData {
     std::vector<CuboidData> steps;
 };

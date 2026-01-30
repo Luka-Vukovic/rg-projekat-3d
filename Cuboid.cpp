@@ -244,6 +244,60 @@ void drawRectangle(const RectangleData& rectangle) {
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
+RectangleData create2DOverlay(float x, float y, float width, float height,
+    glm::vec4 color, unsigned int texture) {
+    RectangleData rectangle;
+
+    // x, y su u NDC koordinatama (-1 do 1)
+    // width, height su takođe u NDC prostoru
+    float halfW = width / 2.0f;
+    float halfH = height / 2.0f;
+
+    // Vertices u NDC prostoru
+    glm::vec3 topLeft = glm::vec3(x - halfW, y + halfH, 0.0f);
+    glm::vec3 topRight = glm::vec3(x + halfW, y + halfH, 0.0f);
+    glm::vec3 bottomLeft = glm::vec3(x - halfW, y - halfH, 0.0f);
+    glm::vec3 bottomRight = glm::vec3(x + halfW, y - halfH, 0.0f);
+
+    glm::vec3 normal = glm::vec3(0, 0, 1);
+
+    std::vector<float> vertices;
+    std::vector<glm::vec3> verts = { topRight, topLeft, bottomLeft, bottomRight };
+    std::vector<glm::vec2> texCoords = { {1,0}, {0,0}, {0,1}, {1,1} };
+
+    for (int i = 0; i < 4; i++) {
+        vertices.insert(vertices.end(), { verts[i].x, verts[i].y, verts[i].z });
+        vertices.insert(vertices.end(), { color.r, color.g, color.b, color.a });
+        vertices.insert(vertices.end(), { texCoords[i].x, texCoords[i].y });
+        vertices.insert(vertices.end(), { normal.x, normal.y, normal.z });
+    }
+
+    glGenVertexArrays(1, &rectangle.VAO);
+    glBindVertexArray(rectangle.VAO);
+
+    glGenBuffers(1, &rectangle.VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, rectangle.VBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+    unsigned int stride = 12 * sizeof(float);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float)));
+    glEnableVertexAttribArray(3);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    rectangle.texture = texture;
+
+    return rectangle;
+}
+
 StaircaseData createStaircase(float distanceFromScreen, float stepHeight, float stepDepth,
     int numSteps, glm::vec4 stepColor,
     float roomWidth, float roomHeight, float roomDepth, float roomFrontZ, float screenZ, float floorY) {

@@ -32,7 +32,7 @@ void Cinema::BuySeats(int number) {
 
     for (int r = ROWS - 1; r >= 0; r--) {
 
-        for (int c = COLS - number; c >= 0; c--) {
+        for (int c = 0; c <= COLS - number; c++) {
 
             bool allAvailable = true;
 
@@ -62,7 +62,7 @@ void Cinema::ResetSeats()
     }
 }
 
-SeatState Cinema::GetSeatState(int x, int y) {
+SeatState Cinema::GetSeatState(int x, int y) const {
     return seats[x][y];
 }
 
@@ -158,6 +158,7 @@ void Cinema::SwitchState() {
     else if (cinemaState == CinemaState::LEAVING) {
         cinemaState = CinemaState::SELLING;
     }
+
 }
 
 void Cinema::FillAndShufflePool() {

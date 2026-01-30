@@ -15,8 +15,11 @@
 #include "Cuboid.hpp"
 #include "Light.hpp"
 #include "Cinema.hpp"
+#include "Chair.hpp"
 
 Cinema cinema = Cinema();
+CinemaSeatsData allChairs;
+bool needsChairUpdate = false;
 
 double enteringStart = NULL;
 double playingStart = NULL;
@@ -67,7 +70,75 @@ unsigned int preprocessTexture(const char* filepath) {
 bool firstMouse = true;
 float lastX, lastY = 500.0f;
 float yaw = -90.0f, pitch = 0.0f;
+glm::vec3 cameraPos = glm::vec3(0.0, 0.0, 2.0);;
 glm::vec3 cameraFront = glm::vec3(0.0, 0.0, -1.0);
+
+// Funkcija za ray casting - pronalazi na koju stolicu je kliknuto
+bool rayIntersectsChair(glm::vec3 rayOrigin, glm::vec3 rayDirection,
+    glm::vec3 chairPos, float width, float height, float depth,
+    int& row, int& col) {
+    // AABB (Axis-Aligned Bounding Box) test
+    // Izračunaj granice stolice
+    glm::vec3 boxMin = glm::vec3(chairPos.x, chairPos.y - height, chairPos.z - depth);
+    glm::vec3 boxMax = glm::vec3(chairPos.x + width, chairPos.y, chairPos.z);
+
+    float tMin = 0.0f;
+    float tMax = 1000.0f;  // Maksimalna udaljenost
+
+    // Test za svaku osu
+    for (int i = 0; i < 3; i++) {
+        if (abs(rayDirection[i]) < 0.001f) {
+            // Ray je paralelan sa ovom ravni
+            if (rayOrigin[i] < boxMin[i] || rayOrigin[i] > boxMax[i]) {
+                return false;
+            }
+        }
+        else {
+            float t1 = (boxMin[i] - rayOrigin[i]) / rayDirection[i];
+            float t2 = (boxMax[i] - rayOrigin[i]) / rayDirection[i];
+
+            if (t1 > t2) std::swap(t1, t2);
+
+            tMin = std::max(tMin, t1);
+            tMax = std::min(tMax, t2);
+
+            if (tMin > tMax) return false;
+        }
+    }
+
+    return tMin < tMax;
+}
+
+// Funkcija za pronalaženje stolice na koju je kliknuto
+bool findClickedChair(glm::vec3 cameraPos, glm::vec3 cameraFront,
+    const CinemaSeatsData& seats, int& clickedRow, int& clickedCol) {
+
+    float closestDistance = 1000.0f;
+    bool found = false;
+    int hitCount = 0;
+
+    for (size_t i = 0; i < seats.chairs.size(); i++) {
+        int row = seats.seatIndices[i].first;
+        int col = seats.seatIndices[i].second;
+
+        if (rayIntersectsChair(cameraPos, cameraFront, seats.positions[i],
+            seats.chairWidth, seats.chairHeight, seats.chairDepth,
+            row, col)) {
+
+            hitCount++;
+            float distance = glm::length(seats.positions[i] - cameraPos);
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                clickedRow = row;
+                clickedCol = col;
+                found = true;
+            }
+        }
+    }
+
+    return found;
+}
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {
@@ -113,14 +184,38 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
         fov = 45.0f;
 }
 
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+
+    if (cinema.GetCinemaState() != CinemaState::SELLING) {
+        return;
+    }
+
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+
+        int clickedRow = -1, clickedCol = -1;
+
+        if (findClickedChair(cameraPos, cameraFront, allChairs, clickedRow, clickedCol)) {
+
+            SeatState before = cinema.GetSeatState(clickedRow, clickedCol);
+
+            cinema.ToggleSeat(clickedRow, clickedCol);
+
+            SeatState after = cinema.GetSeatState(clickedRow, clickedCol);
+
+            needsChairUpdate = true;
+        }
+    }
+}
+
 bool numberKeysActive[10] = { false };
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    /*for (int i = 1; i <= 9; i++) {
+    for (int i = 1; i <= 9; i++) {
         if (key == GLFW_KEY_0 + i || key == GLFW_KEY_KP_0 + i) {
             if (action == GLFW_PRESS && !numberKeysActive[i]) {
                 cinema.BuySeats(i);
                 numberKeysActive[i] = true;
+                needsChairUpdate = true;  // DODAJ OVO
             }
             else if (action == GLFW_RELEASE) {
                 numberKeysActive[i] = false;
@@ -128,7 +223,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         }
     }
 
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+    /*if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }*/
 
@@ -232,11 +327,18 @@ int main(void)
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
 
     for (int i = 0; i < 28; i++) {
         std::string path = "res/movie_frames/frame" + std::to_string(i + 1) + ".png";
         screenTextures[i] = preprocessTexture(path.c_str());
     }
+
+    unsigned int availableChairTex = preprocessTexture("res/textures/blue_seat.jpg");
+    unsigned int reservedChairTex = preprocessTexture("res/textures/yellow_seat.jpg");
+    unsigned int boughtChairTex = preprocessTexture("res/textures/red_seat.jpg");
+
+    unsigned int crosshairTex = preprocessTexture("res/textures/crosshair.png");
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -245,6 +347,8 @@ int main(void)
     unsigned int unifiedShader = createShader("basic.vert", "basic.frag");
     glUseProgram(unifiedShader);
     glUniform1i(glGetUniformLocation(unifiedShader, "uTex"), 0);
+
+    unsigned int uiShader = createShader("ui.vert", "ui.frag");
 
     // Definisanje boja za svaku stranu KORISTEĆI GLOBALNE KONSTANTE
     std::vector<glm::vec4> roomColors = {
@@ -289,6 +393,27 @@ int main(void)
         ROOM_FRONT_TOP_LEFT.z,
         SCREEN_Z,
         ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT
+    );
+
+    allChairs = createCinemaSeats(
+        cinema,
+        0.8f,                    // Širina stolice
+        1.2f,                    // Visina stolice
+        0.8f,                    // Dubina stolice
+        1.5f,                    // Razmak od desnog zida
+        0.3f,                    // Razmak između stolica
+        availableChairTex,       // Tekstura za dostupne stolice
+        reservedChairTex,        // Tekstura za rezervisane stolice
+        boughtChairTex,          // Tekstura za kupljene stolice
+        ROOM_WIDTH,
+        ROOM_HEIGHT,
+        ROOM_DEPTH,
+        ROOM_FRONT_TOP_LEFT.z,
+        SCREEN_Z,
+        ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT,
+        STEP_HEIGHT,
+        STEP_DEPTH,
+        DISTANCE_FROM_SCREEN
     );
 
     // Svetla na plafonu - koriste globalne konstante
@@ -347,11 +472,17 @@ int main(void)
         1.0f, 0.045f, 0.0075f
     ));
 
+    RectangleData crosshair = create2DOverlay(
+        0.0f, 0.0f,           // Centar ekrana (NDC koordinate)
+        0.05f, 0.089f,         // Veličina (NDC koordinate - probaj različite vrednosti)
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Bela boja
+        crosshairTex          // Tekstura
+    );
+
     // Uniforme
     glm::mat4 model = glm::mat4(1.0f);
     unsigned int modelLoc = glGetUniformLocation(unifiedShader, "uM");
 
-    glm::vec3 cameraPos = glm::vec3(0.0, 0.0, 2.0);
     glm::vec3 cameraUp = glm::vec3(0.0, 1.0, 0.0);
     glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
     unsigned int viewLoc = glGetUniformLocation(unifiedShader, "uV");
@@ -426,6 +557,11 @@ int main(void)
             }
         }
 
+        if (needsChairUpdate) {
+            updateCinemaSeatsTextures(allChairs, cinema, availableChairTex, reservedChairTex, boughtChairTex);
+            needsChairUpdate = false;
+        }
+
         if (enteringStart != NULL) {
             /*if (!peopleInitialized) {
                 InitializePeople(seatWidth, seatHeight, aspect);
@@ -438,6 +574,7 @@ int main(void)
                 //formDoorVAO(VAOdoor, VBOdoor, aspect);
                 hasOpenedDoor = false;
                 //cinema.SitOnSeats();
+                needsChairUpdate = true;
                 playingStart = glfwGetTime();
             }
             else if (!hasOpenedDoor) {
@@ -453,6 +590,7 @@ int main(void)
                 screen.texture = 0;
                 //formDoorVAO(VAOdoor, VBOdoor, aspect);
                 //cinema.StandUp();
+                needsChairUpdate = true;
                 leavingStart = glfwGetTime();
                 //SetupPersonForExit();
             }
@@ -470,6 +608,7 @@ int main(void)
                 //formDoorVAO(VAOdoor, VBOdoor, aspect);
                 cinema.ResetSeats();
                 cinema.ResetSelectedSeats();
+                needsChairUpdate = true;
                 //ResetPeople();
             }
         }
@@ -498,6 +637,9 @@ int main(void)
         // Crtanje stepeništa
         drawStaircase(staircase);
 
+        glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);
+        drawCinemaSeats(allChairs);
+
         if (playingStart != NULL) {
             glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);
         }
@@ -506,6 +648,24 @@ int main(void)
             glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
         }
         drawRectangle(screen);
+
+        // --- CRTANJE CROSSHAIR-A ---
+        if (cinema.GetCinemaState() == CinemaState::SELLING) {
+            glDisable(GL_DEPTH_TEST);
+
+            // Koristi UI shader umesto unifiedShader
+            glUseProgram(uiShader);
+
+            // Aktiviraj teksturu
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, crosshairTex);
+            glUniform1i(glGetUniformLocation(uiShader, "uTex"), 0);
+            glUniform1i(glGetUniformLocation(uiShader, "useTex"), 1);
+
+            drawRectangle(crosshair);
+
+            glEnable(GL_DEPTH_TEST);
+        }
 
         while (glfwGetTime() - startTime < 1.0 / 75) {}
         glfwSwapBuffers(window);
@@ -521,6 +681,12 @@ int main(void)
     for (auto& step : staircase.steps) {
         glDeleteBuffers(1, &step.VBO);
         glDeleteVertexArrays(1, &step.VAO);
+    }
+    for (auto& chair : allChairs.chairs) {
+        for (auto& part : chair.parts) {
+            glDeleteBuffers(1, &part.VBO);
+            glDeleteVertexArrays(1, &part.VAO);
+        }
     }
 
     glfwTerminate();

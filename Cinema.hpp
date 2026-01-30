@@ -45,7 +45,7 @@ public:
     void ToggleSeat(int x, int y);
     void BuySeats(int number);
     void ResetSeats();
-    SeatState GetSeatState(int x, int y);
+    SeatState GetSeatState(int x, int y) const;
     CinemaState GetCinemaState();
     std::vector<std::pair<int, int>> GetTakenSeats();
     std::vector<std::pair<int, int>> GetSelectedSeats();
