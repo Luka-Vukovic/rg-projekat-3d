@@ -370,6 +370,15 @@ int main(void)
 
     unsigned int crosshairTex = preprocessTexture("res/textures/crosshair.png");
 
+    unsigned int doorFullTex = preprocessTexture("res/textures/door_full.jpg");
+
+    unsigned int doorLeftTex = preprocessTexture("res/textures/door_left_main.jpg");
+    unsigned int doorRightTex = preprocessTexture("res/textures/door_right_main.jpg");
+    unsigned int doorOutsideTex = preprocessTexture("res/textures/door_outside.jpg");
+    unsigned int doorInsideTex = preprocessTexture("res/textures/door_inside.jpg");
+    unsigned int doorTopTex = preprocessTexture("res/textures/door_top.jpg");
+    unsigned int doorBottomTex = preprocessTexture("res/textures/door_bottom.jpg");
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -382,7 +391,7 @@ int main(void)
 
     // Definisanje boja za svaku stranu KORISTEĆI GLOBALNE KONSTANTE
     std::vector<glm::vec4> roomColors = {
-        glm::vec4(0.05, 0.05, 0.05, 1.0),  // Prednja
+        glm::vec4(0.32, 0.32, 0.32, 1.0),  // Prednja
         glm::vec4(0.32, 0.1, 0.1, 1.0),    // Leva
         glm::vec4(0.24, 0.16, 0.16, 1.0),  // Donja
         glm::vec4(0.2, 0.2, 0.2, 1.0),     // Gornja
@@ -401,6 +410,26 @@ int main(void)
         true
     );
 
+    CuboidData leftDoor = createCuboid(
+        glm::vec3(-9.53f, 0.4f, SCREEN_Z + 0.94f),
+        0.12f,
+        2.4f,
+        0.93f,
+        roomColors,
+        {doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex},
+        false
+    );
+
+    CuboidData rightDoor = createCuboid(
+        glm::vec3(-7.79f, 0.4f, SCREEN_Z + 0.94f),
+        0.12f,
+        2.4f,
+        0.93f,
+        roomColors,
+        {doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex},
+        false
+    );
+
     // Kreiranje platna (beli pravougaonik)
     RectangleData screen = createRectangle(
         SCREEN_CENTER,
@@ -408,6 +437,24 @@ int main(void)
         SCREEN_HEIGHT,
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Bela boja
         0,  // Bez teksture (možeš dodati teksturu kasnije)
+        true // Okrenut ka kameri
+    );
+
+    RectangleData openedDoor = createRectangle(
+        glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f),
+        1.86f,
+        2.4f,
+        glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), // Bela boja
+        0,  // Bez teksture (možeš dodati teksturu kasnije)
+        true // Okrenut ka kameri
+    );
+
+    RectangleData closedDoor = createRectangle(
+        glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f),
+        1.86f,
+        2.4f,
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Bela boja
+        doorFullTex,  // Bez teksture (možeš dodati teksturu kasnije)
         true // Okrenut ka kameri
     );
 
@@ -669,6 +716,16 @@ int main(void)
 
         glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);
         drawCinemaSeats(allChairs);
+
+        if ((cinema.GetCinemaState() == CinemaState::SELLING) || (cinema.GetCinemaState() == CinemaState::PLAYING)) {
+            drawRectangle(closedDoor);
+        }
+        else {
+            drawCuboid(leftDoor);
+            drawCuboid(rightDoor);
+            glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
+            drawRectangle(openedDoor);
+        }
 
         if (playingStart != NULL) {
             glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);

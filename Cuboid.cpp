@@ -100,8 +100,8 @@ CuboidData createCuboid(glm::vec3 frontTopLeft, float width, float height, float
     // 5. Desna strana (x = frontTopLeft.x + width)
     normal = glm::vec3(normalDir, 0, 0);
     std::vector<glm::vec3> rightVerts = inverted ?
-        std::vector<glm::vec3>{ btr, ftr, fbr, bbr } :
-        std::vector<glm::vec3>{ fbr, bbr, btr, ftr };
+        std::vector<glm::vec3>{ fbr, bbr, btr, ftr } :
+        std::vector<glm::vec3>{ btr, ftr, fbr, bbr };
 
     for (int i = 0; i < 4; i++) {
         vertices.insert(vertices.end(), { rightVerts[i].x, rightVerts[i].y, rightVerts[i].z });
