@@ -267,9 +267,14 @@ bool isPositionValid(glm::vec3 pos) {
         return false;
     }
 
-    // Provera kolizije sa stepeništem
+    // Provera kolizije sa stepeništem (glavni koraci I međukoraci)
     float stepZ = SCREEN_Z + DISTANCE_FROM_SCREEN;
     float stepY = ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT;
+
+    // Dimenzije međukoraka (iste kao u createStaircase)
+    float subStepWidth = ROOM_WIDTH * 0.25f;
+    float subStepHeight = STEP_HEIGHT * 0.5f;
+    float subStepDepth = STEP_DEPTH * 0.5f;
 
     for (int i = 0; i < NUM_STEPS; i++) {
         float currentStepDepth = STEP_DEPTH;
@@ -277,6 +282,7 @@ bool isPositionValid(glm::vec3 pos) {
             currentStepDepth = ROOM_DEPTH - stepZ + SCREEN_Z;
         }
 
+        // === PROVERA GLAVNOG KORAKA ===
         float stepMinZ = stepZ;
         float stepMaxZ = stepZ + currentStepDepth + MARGIN;
         float stepMinY = stepY;
@@ -294,6 +300,30 @@ bool isPositionValid(glm::vec3 pos) {
             return false;
         }
 
+        // === PROVERA MEĐUKORAKA (levi međukorak) ===
+        // Međukorak je pozicioniran na prednjoj ivici glavnog koraka, levo
+        float subStepMinX = -ROOM_WIDTH / 2.0f;
+        float subStepMaxX = -ROOM_WIDTH / 2.0f + subStepWidth + MARGIN;
+        float subStepMinY = stepY;  // Počinje od poda glavnog koraka
+        float subStepMaxY = stepY + subStepHeight + MARGIN;
+        float subStepMinZ = stepZ;  // Prednja ivica glavnog koraka
+        float subStepMaxZ = stepZ + subStepDepth + MARGIN;
+
+        // Provera kolizije sa međukorakom
+        if (pos.x >= subStepMinX && pos.x <= subStepMaxX &&
+            pos.y >= subStepMinY && pos.y <= subStepMaxY &&
+            pos.z >= subStepMinZ && pos.z <= subStepMaxZ) {
+            return false;
+        }
+
+        // Provera ako pokušava proći kroz međukorak
+        if (pos.x >= subStepMinX && pos.x <= subStepMaxX &&
+            pos.y < subStepMaxY &&
+            pos.z >= subStepMinZ && pos.z <= subStepMaxZ) {
+            return false;
+        }
+
+        // Pomeramo se za sledeći korak (nazad i gore)
         stepZ += STEP_DEPTH;
         stepY += STEP_HEIGHT;
     }

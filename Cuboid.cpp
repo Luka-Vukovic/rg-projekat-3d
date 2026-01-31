@@ -346,6 +346,33 @@ StaircaseData createStaircase(float distanceFromScreen, float stepHeight, float 
         );
 
         staircase.steps.push_back(step);
+        
+        float subStepWidth = ROOM_WIDTH * 0.25f;  // 15% širine sobe
+        float subStepHeight = stepHeight * 0.5f;   // Polovina visine koraka
+        float subStepDepth = stepDepth * 0.5f;     // Polovina dubine koraka
+
+        // Međukorak je pozicioniran:
+        // - Na PREDNJOJ ivici glavnog koraka
+        // - Na LEVOJ strani (ili možeš promeniti za desnu)
+        // - Na pola visine do sledećeg koraka
+
+        glm::vec3 subStepFrontTopLeft = glm::vec3(
+            -ROOM_WIDTH / 2.0f,                          // Levo
+            currentY + subStepHeight,       // Pola visine do sledećeg koraka
+            currentZ                      // Prednja ivica trenutnog koraka
+        );
+
+        CuboidData subStep = createCuboid(
+            subStepFrontTopLeft,
+            subStepWidth,
+            subStepHeight,
+            subStepDepth,
+            colors,
+            {},
+            false
+        );
+
+        staircase.steps.push_back(subStep);
 
         // Pomeramo se za sledeći korak (nazad i gore)
         currentZ += stepDepth;
