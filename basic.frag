@@ -53,6 +53,28 @@ vec3 calculateLight(Light light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 o
     return ambient + diffuse + specular;
 }
 
+uniform vec3 screenLightPositions[3];
+uniform vec3 screenLightColor;
+uniform float screenLightIntensity;
+uniform float screenLightRadius;
+uniform bool useScreenLight;
+
+vec3 calculateScreenLight(vec3 fragPos, vec3 objectColor) {
+    vec3 totalLight = vec3(0.0);
+    
+    for (int i = 0; i < 3; i++) {
+        float dist = length(fragPos - screenLightPositions[i]);
+        
+        float normalizedDist = dist / screenLightRadius;
+        float attenuation = max(0.0, 1.0 - normalizedDist);
+        attenuation = attenuation * attenuation * (3.0 - 2.0 * attenuation);
+        
+        totalLight += attenuation * objectColor;
+    }
+    
+    return screenLightColor * screenLightIntensity * totalLight / 3.0;
+}
+
 void main()
 {
     vec4 baseColor;
@@ -67,14 +89,22 @@ void main()
         }
     }
     
-    // Normalizuj normalu
+    if (numLights == 0 && !useScreenLight) {
+        outCol = baseColor;
+        return;
+    }
+    
     vec3 norm = normalize(fragNormal);
     vec3 viewDir = normalize(viewPos - fragPos);
     
-    // Kalkuliši osvjetljenje od svih svetala
     vec3 result = vec3(0.0);
     for(int i = 0; i < numLights; i++) {
         result += calculateLight(lights[i], norm, fragPos, viewDir, baseColor.rgb);
+    }
+    
+    // Dodaj svetlo iz platna ako je aktivirano
+    if (useScreenLight) {
+        result += calculateScreenLight(fragPos, baseColor.rgb);
     }
     
     outCol = vec4(result, baseColor.a);

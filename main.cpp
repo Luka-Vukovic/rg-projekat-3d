@@ -50,6 +50,27 @@ const float STEP_HEIGHT = 0.7f;       // Visina svakog koraka
 const float STEP_DEPTH = 2.0f;        // Dužina svakog koraka
 const float DISTANCE_FROM_SCREEN = 9.5f; // Udaljenost prvog koraka od platna
 
+// Slaba svetla za SELLING i PLAYING
+const glm::vec3 LIGHT_AMBIENT_DIM = glm::vec3(0.08f, 0.08f, 0.08f);
+const glm::vec3 LIGHT_DIFFUSE_DIM = glm::vec3(0.15f, 0.15f, 0.2f);
+const glm::vec3 LIGHT_SPECULAR_DIM = glm::vec3(0.05f, 0.05f, 0.05f);
+
+// Jaka svetla za ENTERING i LEAVING
+const glm::vec3 LIGHT_AMBIENT_BRIGHT = glm::vec3(0.5f, 0.5f, 0.5f);
+const glm::vec3 LIGHT_DIFFUSE_BRIGHT = glm::vec3(1.3f, 1.3f, 1.6f);
+const glm::vec3 LIGHT_SPECULAR_BRIGHT = glm::vec3(0.3f, 0.3f, 0.3f);
+
+const glm::vec3 SCREEN_LIGHT_COLOR = glm::vec3(0.9f, 0.85f, 0.75f);
+const float SCREEN_LIGHT_INTENSITY = 1.8f;    // Pojačano jer delimo sa 3
+const float SCREEN_LIGHT_RADIUS = 10.0f;      // Manji radijus jer imamo više izvora
+
+// Pozicije svetla - levo, centralno, desno
+glm::vec3 screenLightPositions[3] = {
+    glm::vec3(SCREEN_CENTER.x - SCREEN_WIDTH * 0.33f, SCREEN_CENTER.y, SCREEN_Z + 2.5f),  // Levo
+    glm::vec3(SCREEN_CENTER.x,                         SCREEN_CENTER.y, SCREEN_Z + 2.5f),  // Centralno
+    glm::vec3(SCREEN_CENTER.x + SCREEN_WIDTH * 0.33f, SCREEN_CENTER.y, SCREEN_Z + 2.5f)   // Desno
+};
+
 int endProgram(std::string message) {
     std::cout << message << std::endl;
     glfwTerminate();
@@ -331,6 +352,29 @@ bool isPositionValid(glm::vec3 pos) {
     return true;
 }
 
+// Dodaj pre main():
+void updateLightsForState(std::vector<Light>& lights, CinemaState state) {
+    glm::vec3 ambient, diffuse, specular;
+
+    if (state == CinemaState::ENTERING || state == CinemaState::LEAVING) {
+        ambient = LIGHT_AMBIENT_BRIGHT;
+        diffuse = LIGHT_DIFFUSE_BRIGHT;
+        specular = LIGHT_SPECULAR_BRIGHT;
+    }
+    else {
+        // SELLING ili PLAYING - slaba svetla
+        ambient = LIGHT_AMBIENT_DIM;
+        diffuse = LIGHT_DIFFUSE_DIM;
+        specular = LIGHT_SPECULAR_DIM;
+    }
+
+    for (auto& light : lights) {
+        light.ambient = ambient;
+        light.diffuse = diffuse;
+        light.specular = specular;
+    }
+}
+
 int main(void)
 {
     if (!glfwInit())
@@ -496,58 +540,31 @@ int main(void)
     // Svetla na plafonu - koriste globalne konstante
     std::vector<Light> lights;
 
-    float ceilingY = ROOM_FRONT_TOP_LEFT.y - 0.2f; // Malo ispod plafona
+    float ceilingY = ROOM_FRONT_TOP_LEFT.y - 0.2f;
     float lightZ1 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.25f;
     float lightZ2 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.5f;
     float lightZ3 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.75f;
 
-    lights.push_back(Light(
+    // Čuvamo pozicije svetla za lakše ažuriranje
+    std::vector<glm::vec3> lightPositions = {
         glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ1),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(1.3f, 1.3f, 1.6f),
-        glm::vec3(0.3f, 0.3f, 0.3f),
-        1.0f, 0.045f, 0.0075f
-    ));
-
-    lights.push_back(Light(
         glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ1),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(1.3f, 1.3f, 1.6f),
-        glm::vec3(0.3f, 0.3f, 0.3f),
-        1.0f, 0.045f, 0.0075f
-    ));
-
-    lights.push_back(Light(
         glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ2),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(1.3f, 1.3f, 1.6f),
-        glm::vec3(0.3f, 0.3f, 0.3f),
-        1.0f, 0.045f, 0.0075f
-    ));
-
-    lights.push_back(Light(
         glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ2),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(1.3f, 1.3f, 1.6f),
-        glm::vec3(0.3f, 0.3f, 0.3f),
-        1.0f, 0.045f, 0.0075f
-    ));
-
-    lights.push_back(Light(
         glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ3),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(1.3f, 1.3f, 1.6f),
-        glm::vec3(0.3f, 0.3f, 0.3f),
-        1.0f, 0.045f, 0.0075f
-    ));
+        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ3)
+    };
 
-    lights.push_back(Light(
-        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ3),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(1.3f, 1.3f, 1.6f),
-        glm::vec3(0.3f, 0.3f, 0.3f),
-        1.0f, 0.045f, 0.0075f
-    ));
+    // Inicijalno kreiranje svetla (SELLING = dim)
+    for (const auto& pos : lightPositions) {
+        lights.push_back(Light(
+            pos,
+            LIGHT_AMBIENT_DIM,
+            LIGHT_DIFFUSE_DIM,
+            LIGHT_SPECULAR_DIM,
+            1.0f, 0.045f, 0.0075f
+        ));
+    }
 
     RectangleData crosshair = create2DOverlay(
         0.0f, 0.0f,           // Centar ekrana (NDC koordinate)
@@ -634,6 +651,13 @@ int main(void)
             }
         }
 
+        static CinemaState lastState = CinemaState::SELLING;
+        CinemaState currentState = cinema.GetCinemaState();
+        if (currentState != lastState) {
+            updateLightsForState(lights, currentState);
+            lastState = currentState;
+        }
+
         if (needsChairUpdate) {
             updateCinemaSeatsTextures(allChairs, cinema, availableChairTex, reservedChairTex, boughtChairTex);
             needsChairUpdate = false;
@@ -706,6 +730,18 @@ int main(void)
 
         setLightsUniforms(unifiedShader, lights);
         glUniform3fv(glGetUniformLocation(unifiedShader, "viewPos"), 1, &cameraPos[0]);
+
+        // Screen light - samo aktivno kad je PLAYING
+        if (playingStart != NULL) {
+            glUniform1i(glGetUniformLocation(unifiedShader, "useScreenLight"), 1);
+            glUniform3fv(glGetUniformLocation(unifiedShader, "screenLightPositions"), 3, &screenLightPositions[0][0]);
+            glUniform3fv(glGetUniformLocation(unifiedShader, "screenLightColor"), 1, &SCREEN_LIGHT_COLOR[0]);
+            glUniform1f(glGetUniformLocation(unifiedShader, "screenLightIntensity"), SCREEN_LIGHT_INTENSITY);
+            glUniform1f(glGetUniformLocation(unifiedShader, "screenLightRadius"), SCREEN_LIGHT_RADIUS);
+        }
+        else {
+            glUniform1i(glGetUniformLocation(unifiedShader, "useScreenLight"), 0);
+        }
 
         // Crtanje prostorije
         glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);

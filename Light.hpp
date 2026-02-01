@@ -27,6 +27,13 @@ struct Light {
         constant(con), linear(lin), quadratic(quad) {}
 };
 
+struct ScreenLight {
+    glm::vec3 position;
+    glm::vec3 color;
+    float intensity;
+    float radius;  // Polumjar osvetljenog prostora ispred platna
+};
+
 void setLightsUniforms(unsigned int shaderProgram, const std::vector<Light>& lights);
 
 #endif
