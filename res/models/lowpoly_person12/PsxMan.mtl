@@ -1,0 +1,21 @@
+newmtl Face
+Ns 0
+Ka 1.0 1.0 1.0
+Kd 0.60383 0.60383 0.60383
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+map_Kd ManFace_16.png
+
+newmtl Body
+Ns 0
+Ka 1.0 1.0 1.0
+Kd 0.60383 0.60383 0.60383
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+map_Kd Picsart_25-09-21_07-53-07-107.jpg

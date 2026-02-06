@@ -2,11 +2,12 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-//GLM biblioteke
+//GLM lights
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -16,10 +17,16 @@
 #include "Light.hpp"
 #include "Cinema.hpp"
 #include "Chair.hpp"
+#include "Person.hpp"
+#include "model.hpp"
+#include "shader.hpp"
 
 Cinema cinema = Cinema();
 CinemaSeatsData allChairs;
 bool needsChairUpdate = false;
+
+std::vector<Model*> peopleModels;
+Shader* modelShader = nullptr;
 
 double enteringStart = NULL;
 double playingStart = NULL;
@@ -63,6 +70,9 @@ const glm::vec3 LIGHT_SPECULAR_BRIGHT = glm::vec3(0.3f, 0.3f, 0.3f);
 const glm::vec3 SCREEN_LIGHT_COLOR = glm::vec3(0.9f, 0.85f, 0.75f);
 const float SCREEN_LIGHT_INTENSITY = 1.8f;    // Pojačano jer delimo sa 3
 const float SCREEN_LIGHT_RADIUS = 10.0f;      // Manji radijus jer imamo više izvora
+
+// Svetla na plafonu - koriste globalne konstante
+std::vector<Light> lights;
 
 // Pozicije svetla - levo, centralno, desno
 glm::vec3 screenLightPositions[3] = {
@@ -352,6 +362,46 @@ bool isPositionValid(glm::vec3 pos) {
     return true;
 }
 
+std::vector<Person> people;
+
+void drawPerson(const Person& person, Model* model, Shader& shader,
+    const glm::mat4& view, const glm::mat4& projection) {
+    shader.use();
+
+    // Postavi matrices
+    shader.setMat4("uV", view);
+    shader.setMat4("uP", projection);
+
+    // Model matrica
+    glm::mat4 modelMat = glm::mat4(1.0f);
+    modelMat = glm::translate(modelMat, person.position);
+    modelMat = glm::rotate(modelMat, person.rotation.y, glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
+    modelMat = glm::rotate(modelMat, person.rotation.x, glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
+    modelMat = glm::rotate(modelMat, person.rotation.z, glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
+    modelMat = glm::scale(modelMat, glm::vec3(person.scale));
+
+    shader.setMat4("uM", modelMat);
+
+    // Lighting
+    shader.setVec3("uViewPos", cameraPos);
+
+    // Postavi svetla (koristi isti lighting sistem kao za prostoriju)
+    for (int i = 0; i < lights.size(); i++) {
+        std::string base = "lights[" + std::to_string(i) + "]";
+        shader.setVec3(base + ".position", lights[i].position);
+        shader.setVec3(base + ".ambient", lights[i].ambient);
+        shader.setVec3(base + ".diffuse", lights[i].diffuse);
+        shader.setVec3(base + ".specular", lights[i].specular);
+        shader.setFloat(base + ".constant", lights[i].constant);
+        shader.setFloat(base + ".linear", lights[i].linear);
+        shader.setFloat(base + ".quadratic", lights[i].quadratic);
+    }
+    shader.setInt("numLights", lights.size());
+
+    // Crtanje modela
+    model->Draw(shader);
+}
+
 // Dodaj pre main():
 void updateLightsForState(std::vector<Light>& lights, CinemaState state) {
     glm::vec3 ambient, diffuse, specular;
@@ -432,6 +482,31 @@ int main(void)
     glUniform1i(glGetUniformLocation(unifiedShader, "uTex"), 0);
 
     unsigned int uiShader = createShader("ui.vert", "ui.frag");
+
+    // Kreiranje shader-a za modele
+    modelShader = new Shader("model.vert", "model.frag");
+
+    std::vector<std::string> modelNames = {
+    "hero.obj", "scientist.obj", "redneck.obj", "female_secretary.obj",
+    "PsxMan.obj", "PsxMan.obj", "PsxMan.obj", "PsxMan.obj",
+    "PsxMan.obj", "PsxMan.obj", "PsxMan.obj", "PsxMan.obj",
+    "mulder.obj", "oldMale_01.obj", "hunk.obj"
+    };
+
+    for (int i = 1; i <= 15; i++) {
+        std::string modelPath =
+            "res/models/lowpoly_person" + std::to_string(i) + "/" + modelNames[i - 1];
+
+        try {
+            Model* personModel = new Model(modelPath);
+            peopleModels.push_back(personModel);
+            std::cout << "Loaded model: " << modelPath << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Failed to load model: " << modelPath
+                << " - " << e.what() << std::endl;
+        }
+    }
 
     // Definisanje boja za svaku stranu KORISTEĆI GLOBALNE KONSTANTE
     std::vector<glm::vec4> roomColors = {
@@ -537,9 +612,6 @@ int main(void)
         DISTANCE_FROM_SCREEN
     );
 
-    // Svetla na plafonu - koriste globalne konstante
-    std::vector<Light> lights;
-
     float ceilingY = ROOM_FRONT_TOP_LEFT.y - 0.2f;
     float lightZ1 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.25f;
     float lightZ2 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.5f;
@@ -598,6 +670,39 @@ int main(void)
     glCullFace(GL_BACK);
 
     bool hasOpenedDoor = false;
+
+    // test
+    float startX = -7.0f;  // Početna X pozicija
+    float spacing = 1.0f;  // Razmak između ljudi
+    float yPos = -2.0f;    // Y pozicija (visina)
+    float zPos = -4.0f;    // Z pozicija (dubina)
+
+    for (int i = 0; i < peopleModels.size(); i++) {
+        Person person;
+        person.position = glm::vec3(startX + (i * spacing), yPos, zPos);
+        float rotate = 0.0f;
+        if ((i <= 3) || (i == 13)){
+            person.scale = 0.01f;
+        }
+        else if (i <= 10) {
+            person.scale = 1.30f;
+            rotate = 1.5f;
+        }
+        else if (i == 11) {
+            person.scale = 1.65f;
+            rotate = 1.5f;
+        }
+        else if (i == 12){
+            person.scale = 0.55f;
+            rotate = -1.5f;
+        }
+        else if (i == 14) {
+            person.scale = 0.0025f;
+        }
+        person.rotation = glm::vec3(0.0f, rotate, 0.0f);  // Svi gledaju napred
+        person.state = Person::SITTING;
+        people.push_back(person);
+    }
 
     while (!glfwWindowShouldClose(window))
     {
@@ -772,6 +877,12 @@ int main(void)
         }
         drawRectangle(screen);
 
+        for (size_t i = 0; i < people.size(); i++) {
+            // Svaka osoba koristi svoj odgovarajući model
+            int modelIndex = i % peopleModels.size();  // Garantuje da ne ideš van opsega
+            drawPerson(people[i], peopleModels[modelIndex], *modelShader, view, projectionP);
+        }
+
         // --- CRTANJE CROSSHAIR-A ---
         if (cinema.GetCinemaState() == CinemaState::SELLING) {
             glDisable(GL_DEPTH_TEST);
@@ -811,6 +922,10 @@ int main(void)
             glDeleteVertexArrays(1, &part.VAO);
         }
     }
+    for (auto* model : peopleModels) {
+        delete model;
+    }
+    delete modelShader;
 
     glfwTerminate();
     return 0;

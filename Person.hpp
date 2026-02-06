@@ -1,28 +1,29 @@
-#ifndef PERSON_HPP
-#define PERSON_HPP
-
-enum class PersonState {
-    WALKING_TO_SEAT,
-    SITTING,
-    WALKING_TO_EXIT,
-    EXITED
-};
-
 struct Person {
-    int seatRow;
-    int seatCol;
+    glm::vec3 position;
+    glm::vec3 rotation;  // Euler angles (pitch, yaw, roll)
+    float scale;
+    int targetRow;
+    int targetCol;
 
-    float doorPosX, doorPosY;
-    float seatPosX, seatPosY;
+    // Animacione promenljive
+    enum State {
+        ENTERING,
+        WALKING_TO_STAIRS,
+        CLIMBING_STAIRS,
+        WALKING_TO_SEAT,
+        TURNING_TO_SCREEN,
+        SITTING,
+        STANDING_UP,
+        LEAVING
+    };
+    State state;
+    float animationTime;
 
-    float uX = 0.0f;
-    float uY = 0.0f;
+    // Putanja kretanja
+    std::vector<glm::vec3> pathPoints;
+    int currentPathPoint;
 
-    PersonState state;
-    float speed = 0.65f;
-    bool movingToY = true;
-
-    unsigned int texture;
+    Person() : position(0.0f), rotation(0.0f), scale(1.0f),
+        targetRow(-1), targetCol(-1), state(ENTERING),
+        animationTime(0.0f), currentPathPoint(0) {}
 };
-
-#endif

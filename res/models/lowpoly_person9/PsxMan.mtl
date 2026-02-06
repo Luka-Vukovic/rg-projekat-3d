@@ -1,0 +1,21 @@
+newmtl Face.008
+Ns 0
+Ka 1.0 1.0 1.0
+Kd 0.60383 0.60383 0.60383
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+map_Kd Picsart_25-06-12_17-07-14-857.jpg
+
+newmtl Body.008
+Ns 0
+Ka 1.0 1.0 1.0
+Kd 0.60383 0.60383 0.60383
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+map_Kd BodyTexture_(4).png
