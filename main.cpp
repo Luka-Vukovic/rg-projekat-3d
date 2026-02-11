@@ -20,6 +20,7 @@
 #include "Person.hpp"
 #include "model.hpp"
 #include "shader.hpp"
+#include <random>
 
 Cinema cinema = Cinema();
 CinemaSeatsData allChairs;
@@ -364,6 +365,16 @@ bool isPositionValid(glm::vec3 pos) {
 
 std::vector<Person> people;
 
+float personSpawnTimer = 0.0f;
+const float SPAWN_INTERVAL = 0.3f; // Pola sekunde između ljudi
+int nextPersonToSpawn = 0;
+bool allPeopleSpawned = false;
+
+// Konstante za kretanje
+const float PERSON_WALK_SPEED = 6.0f;  // Jedinice po sekundi
+const float PERSON_ROTATION_SPEED = 3.0f; // Radijani po sekundi
+const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 1.5f);
+
 void drawPerson(const Person& person, Model* model, Shader& shader,
     const glm::mat4& view, const glm::mat4& projection) {
     shader.use();
@@ -422,6 +433,255 @@ void updateLightsForState(std::vector<Light>& lights, CinemaState state) {
         light.ambient = ambient;
         light.diffuse = diffuse;
         light.specular = specular;
+    }
+}
+
+// Funkcija za dobijanje scale-a na osnovu modela
+float getScaleForModel(int modelIndex) {
+    if (modelIndex <= 3 || modelIndex == 13) return 0.01f;
+    else if (modelIndex <= 10) return 1.30f;
+    else if (modelIndex == 11) return 1.65f;
+    else if (modelIndex == 12) return 0.55f;
+    else if (modelIndex == 14) return 0.0025f;
+    return 1.0f;
+}
+
+// Funkcija za dobijanje rotacije na osnovu modela
+float getYRotationForModel(int modelIndex) {
+    if (modelIndex >= 4 && modelIndex <= 12) return 1.5f;
+    else if (modelIndex == 12) return -1.5f;
+    return 0.0f;
+}
+
+// Kreiranje putanje do sedišta - 4 WAYPOINT-A (eksplicitno)
+std::vector<glm::vec3> createPathToSeat(int row, int col,
+    const CinemaSeatsData& chairs) {
+
+    std::vector<glm::vec3> path;
+
+    // === 1. ULAZ/IZLAZ - VRATA ===
+    path.push_back(DOOR_POSITION);
+
+    // === 2. ISPRED STEPENICA ===
+    float stepStartZ = SCREEN_Z + DISTANCE_FROM_SCREEN;
+    float stairX = DOOR_POSITION.x;
+
+    path.push_back(glm::vec3(stairX, DOOR_POSITION.y, stepStartZ - 0.5f));
+
+    // === 3. PRONAĐI POZICIJU SEDIŠTA ===
+    float finalY = ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT + (row + 1) * STEP_HEIGHT;
+
+    glm::vec3 seatPos = glm::vec3(0.0f, finalY, 0.0f);
+
+    for (size_t i = 0; i < chairs.seatIndices.size(); i++) {
+        if (chairs.seatIndices[i].first == row &&
+            chairs.seatIndices[i].second == col) {
+            seatPos = chairs.positions[i];
+            seatPos.y = finalY;
+            break;
+        }
+    }
+
+    float seatCenterX = seatPos.x + chairs.chairWidth / 2.0f;
+    float inFrontZ = seatPos.z - chairs.chairDepth - 0.3f;
+
+    // === 3. NA VRHU STEPENICA (X stepenica, Z ispred sedišta) ===
+    path.push_back(glm::vec3(stairX, finalY, inFrontZ));
+
+    // === 4. ISPRED SEDIŠTA (X sedišta, Z ispred sedišta) ===
+    path.push_back(glm::vec3(seatCenterX, finalY, inFrontZ));
+
+    return path;
+}
+
+// Inicijalizacija ljudi
+void initializePeople(const std::vector<std::pair<int, int>>& selectedSeats) {
+    people.clear();
+    nextPersonToSpawn = 0;
+    personSpawnTimer = 0.0f;
+    allPeopleSpawned = false;
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> modelDist(0, 14);
+
+    for (const auto& seat : selectedSeats) {
+        Person person;
+        person.targetRow = seat.first;
+        person.targetCol = seat.second;
+        person.modelIndex = modelDist(gen);
+        person.scale = getScaleForModel(person.modelIndex);
+        person.rotation.y = getYRotationForModel(person.modelIndex);
+        person.position = DOOR_POSITION;
+        person.state = Person::WAITING_TO_ENTER;
+        person.pathPoints = createPathToSeat(seat.first, seat.second, allChairs);
+        person.currentPathPoint = 0;
+        people.push_back(person);
+    }
+
+    std::cout << "Initialized " << people.size() << " people" << std::endl;
+}
+
+// Update ljudi - FINALNA VERZIJA BEZ OSCILACIJA
+void updatePeople(float deltaTime) {
+    // Spawn timer
+    if (!allPeopleSpawned) {
+        personSpawnTimer += deltaTime;
+
+        if (personSpawnTimer >= SPAWN_INTERVAL &&
+            nextPersonToSpawn < people.size()) {
+
+            people[nextPersonToSpawn].state = Person::ENTERING;
+            people[nextPersonToSpawn].currentPathPoint = 0;
+            nextPersonToSpawn++;
+            personSpawnTimer = 0.0f;
+
+            if (nextPersonToSpawn >= people.size()) {
+                allPeopleSpawned = true;
+            }
+        }
+    }
+
+    // Update svake osobe
+    for (auto& person : people) {
+        if (person.state == Person::WAITING_TO_ENTER || person.state == Person::SITTING) {
+            continue;
+        }
+
+        // === ENTERING ===
+        if (person.state == Person::ENTERING) {
+            if (person.currentPathPoint >= person.pathPoints.size()) {
+                person.state = Person::TURNING_TO_SCREEN;
+                continue;
+            }
+
+            glm::vec3 target = person.pathPoints[person.currentPathPoint];
+            glm::vec3 diff = target - person.position;
+
+            float threshold = 0.3f;
+
+            if (glm::length(diff) < threshold) {
+                person.currentPathPoint++;
+                continue;
+            }
+
+            // === ODREĐIVANJE SMERA KRETANJA ===
+            bool isClimbingStairs = (abs(diff.y) > 0.1f && abs(diff.z) > 0.1f);
+
+            glm::vec3 movement = glm::vec3(0.0f);
+            float speed = PERSON_WALK_SPEED * deltaTime;
+
+            // === KRETANJE I ROTACIJA - POSTAVI ROTACIJU SAMO KAD SE MENJA SMER ===
+
+            // Sačuvaj prethodni smer
+            static std::map<int, int> lastMovementType; // 0=none, 1=Z, 2=climbing, 3=X
+            int personId = &person - &people[0]; // Jednostavan ID
+
+            int currentMovementType = 0;
+
+            if (abs(diff.z) > 0.1f && !isClimbingStairs) {
+                // === SAMO Z ===
+                movement.z = (diff.z > 0) ? speed : -speed;
+                currentMovementType = 1;
+
+                // Postavi rotaciju SAMO ako se promenio smer
+                if (lastMovementType[personId] != 1) {
+                    float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
+                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
+                }
+            }
+            else if (isClimbingStairs) {
+                // === Y + Z ===
+                glm::vec3 direction = glm::normalize(glm::vec3(0.0f, diff.y, diff.z));
+                movement = direction * speed;
+                currentMovementType = 2;
+
+                if (lastMovementType[personId] != 2) {
+                    person.rotation.y = glm::radians(0.0f) + getYRotationForModel(person.modelIndex);
+                }
+            }
+            else if (abs(diff.x) > 0.1f) {
+                // === SAMO X ===
+                movement.x = (diff.x > 0) ? speed : -speed;
+                currentMovementType = 3;
+
+                if (lastMovementType[personId] != 3) {
+                    float targetYaw = (diff.x > 0) ? glm::radians(90.0f) : glm::radians(-90.0f);
+                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
+                }
+            }
+
+            lastMovementType[personId] = currentMovementType;
+            person.position += movement;
+        }
+
+        // === OKRETANJE KA EKRANU ===
+        if (person.state == Person::TURNING_TO_SCREEN) {
+            person.rotation.y = glm::radians(180.0f) + getYRotationForModel(person.modelIndex);
+            person.state = Person::SITTING;
+        }
+
+        // === LEAVING ===
+        if (person.state == Person::LEAVING) {
+            int reverseIdx = person.pathPoints.size() - 1 - person.currentPathPoint;
+
+            if (reverseIdx < 0) {
+                person.state = Person::WAITING_TO_ENTER;
+                person.position = glm::vec3(1000, 1000, 1000);
+                continue;
+            }
+
+            glm::vec3 target = person.pathPoints[reverseIdx];
+            glm::vec3 diff = target - person.position;
+
+            float threshold = 0.3f;
+
+            if (glm::length(diff) < threshold) {
+                person.currentPathPoint++;
+                continue;
+            }
+
+            bool isClimbingStairs = (abs(diff.y) > 0.1f && abs(diff.z) > 0.1f);
+
+            glm::vec3 movement = glm::vec3(0.0f);
+            float speed = PERSON_WALK_SPEED * deltaTime;
+
+            static std::map<int, int> lastMovementTypeLeaving;
+            int personId = &person - &people[0];
+            int currentMovementType = 0;
+
+            if (abs(diff.z) > 0.1f && !isClimbingStairs) {
+                movement.z = (diff.z > 0) ? speed : -speed;
+                currentMovementType = 1;
+
+                if (lastMovementTypeLeaving[personId] != 1) {
+                    float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
+                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
+                }
+            }
+            else if (isClimbingStairs) {
+                glm::vec3 direction = glm::normalize(glm::vec3(0.0f, diff.y, diff.z));
+                movement = direction * speed;
+                currentMovementType = 2;
+
+                if (lastMovementTypeLeaving[personId] != 2) {
+                    float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
+                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
+                }
+            }
+            else if (abs(diff.x) > 0.1f) {
+                movement.x = (diff.x > 0) ? speed : -speed;
+                currentMovementType = 3;
+
+                if (lastMovementTypeLeaving[personId] != 3) {
+                    float targetYaw = (diff.x > 0) ? glm::radians(90.0f) : glm::radians(-90.0f);
+                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
+                }
+            }
+
+            lastMovementTypeLeaving[personId] = currentMovementType;
+            person.position += movement;
+        }
     }
 }
 
@@ -535,7 +795,7 @@ int main(void)
         2.4f,
         0.93f,
         roomColors,
-        {doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex},
+        { doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex },
         false
     );
 
@@ -545,7 +805,7 @@ int main(void)
         2.4f,
         0.93f,
         roomColors,
-        {doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex},
+        { doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex },
         false
     );
 
@@ -671,42 +931,12 @@ int main(void)
 
     bool hasOpenedDoor = false;
 
-    // test
-    float startX = -7.0f;  // Početna X pozicija
-    float spacing = 1.0f;  // Razmak između ljudi
-    float yPos = -2.0f;    // Y pozicija (visina)
-    float zPos = -4.0f;    // Z pozicija (dubina)
-
-    for (int i = 0; i < peopleModels.size(); i++) {
-        Person person;
-        person.position = glm::vec3(startX + (i * spacing), yPos, zPos);
-        float rotate = 0.0f;
-        if ((i <= 3) || (i == 13)){
-            person.scale = 0.01f;
-        }
-        else if (i <= 10) {
-            person.scale = 1.30f;
-            rotate = 1.5f;
-        }
-        else if (i == 11) {
-            person.scale = 1.65f;
-            rotate = 1.5f;
-        }
-        else if (i == 12){
-            person.scale = 0.55f;
-            rotate = -1.5f;
-        }
-        else if (i == 14) {
-            person.scale = 0.0025f;
-        }
-        person.rotation = glm::vec3(0.0f, rotate, 0.0f);  // Svi gledaju napred
-        person.state = Person::SITTING;
-        people.push_back(person);
-    }
-
     while (!glfwWindowShouldClose(window))
     {
         double startTime = glfwGetTime();
+        static double lastFrameTime = startTime;
+        float deltaTime = (float)(startTime - lastFrameTime);
+        lastFrameTime = startTime;
 
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         {
@@ -769,22 +999,25 @@ int main(void)
         }
 
         if (enteringStart != NULL) {
-            /*if (!peopleInitialized) {
-                InitializePeople(seatWidth, seatHeight, aspect);
-            }
-            UpdatePeoplePositions(deltaTime, aspect);*/
+            static bool peopleInitialized = false;
 
-            if (glfwGetTime() - enteringStart > 5) {
+            if (!peopleInitialized) {
+                initializePeople(cinema.GetSelectedSeats());
+                peopleInitialized = true;
+            }
+
+            updatePeople(deltaTime);
+
+            if (glfwGetTime() - enteringStart > 5 + people.size() * SPAWN_INTERVAL) {
                 enteringStart = NULL;
                 cinema.SwitchState();
-                //formDoorVAO(VAOdoor, VBOdoor, aspect);
                 hasOpenedDoor = false;
-                //cinema.SitOnSeats();
+                cinema.SitOnSeats();
                 needsChairUpdate = true;
                 playingStart = glfwGetTime();
+                peopleInitialized = false; // RESETUJ ZA SLEDEĆI PUT
             }
             else if (!hasOpenedDoor) {
-                //formDoorVAO(VAOdoor, VBOdoor, aspect);
                 hasOpenedDoor = true;
             }
         }
@@ -806,16 +1039,23 @@ int main(void)
             }
         }
         else if (leavingStart != NULL) {
-            //UpdatePeoplePositions(deltaTime, aspect);
+            // DODAJ OVO - ljudi izlaze
+            for (auto& person : people) {
+                if (person.state == Person::SITTING) {
+                    person.state = Person::LEAVING;
+                    person.currentPathPoint = 0;
+                }
+            }
 
-            if (glfwGetTime() - leavingStart > 5) {
+            updatePeople(deltaTime);
+
+            if (glfwGetTime() - leavingStart > 5 + people.size() * SPAWN_INTERVAL) {
                 leavingStart = NULL;
                 cinema.SwitchState();
-                //formDoorVAO(VAOdoor, VBOdoor, aspect);
                 cinema.ResetSeats();
                 cinema.ResetSelectedSeats();
                 needsChairUpdate = true;
-                //ResetPeople();
+                people.clear(); // Očisti sve
             }
         }
 
@@ -877,10 +1117,10 @@ int main(void)
         }
         drawRectangle(screen);
 
-        for (size_t i = 0; i < people.size(); i++) {
-            // Svaka osoba koristi svoj odgovarajući model
-            int modelIndex = i % peopleModels.size();  // Garantuje da ne ideš van opsega
-            drawPerson(people[i], peopleModels[modelIndex], *modelShader, view, projectionP);
+        for (const auto& person : people) {
+            if (person.state != Person::WAITING_TO_ENTER) {
+                drawPerson(person, peopleModels[person.modelIndex], *modelShader, view, projectionP);
+            }
         }
 
         // --- CRTANJE CROSSHAIR-A ---
