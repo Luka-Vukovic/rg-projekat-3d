@@ -372,8 +372,8 @@ bool allPeopleSpawned = false;
 
 // Konstante za kretanje
 const float PERSON_WALK_SPEED = 7.5f;  // Jedinice po sekundi
-const float PERSON_ROTATION_SPEED = 3.0f; // Radijani po sekundi
-const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 1.0f);
+const float PERSON_ROTATION_SPEED = 2.0f; // Radijani po sekundi
+const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 0.25f);
 
 void drawPerson(const Person& person, Model* model, Shader& shader,
     const glm::mat4& view, const glm::mat4& projection) {
