@@ -371,9 +371,9 @@ int nextPersonToSpawn = 0;
 bool allPeopleSpawned = false;
 
 // Konstante za kretanje
-const float PERSON_WALK_SPEED = 6.0f;  // Jedinice po sekundi
+const float PERSON_WALK_SPEED = 7.5f;  // Jedinice po sekundi
 const float PERSON_ROTATION_SPEED = 3.0f; // Radijani po sekundi
-const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 1.5f);
+const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 1.0f);
 
 void drawPerson(const Person& person, Model* model, Shader& shader,
     const glm::mat4& view, const glm::mat4& projection) {
@@ -522,7 +522,7 @@ void initializePeople(const std::vector<std::pair<int, int>>& selectedSeats) {
     std::cout << "Initialized " << people.size() << " people" << std::endl;
 }
 
-// Update ljudi - FINALNA VERZIJA BEZ OSCILACIJA
+// Update ljudi - SA PRECIZNIM THRESHOLD-IMA
 void updatePeople(float deltaTime) {
     // Spawn timer
     if (!allPeopleSpawned) {
@@ -565,39 +565,39 @@ void updatePeople(float deltaTime) {
                 continue;
             }
 
-            // === ODREĐIVANJE SMERA KRETANJA ===
-            bool isClimbingStairs = (abs(diff.y) > 0.1f && abs(diff.z) > 0.1f);
+            // === POBOLJŠANA DETEKCIJA PENJANJA ===
+            // Ako su OBE komponente značajne, to je penjanje
+            // Koristi VEĆE threshold-e za detekciju penjanja
+            bool isClimbingStairs = (abs(diff.y) > 0.2f && abs(diff.z) > 0.2f);
 
             glm::vec3 movement = glm::vec3(0.0f);
             float speed = PERSON_WALK_SPEED * deltaTime;
 
-            // === KRETANJE I ROTACIJA - POSTAVI ROTACIJU SAMO KAD SE MENJA SMER ===
-
             // Sačuvaj prethodni smer
-            static std::map<int, int> lastMovementType; // 0=none, 1=Z, 2=climbing, 3=X
-            int personId = &person - &people[0]; // Jednostavan ID
+            static std::map<int, int> lastMovementType;
+            int personId = &person - &people[0];
 
             int currentMovementType = 0;
 
-            if (abs(diff.z) > 0.1f && !isClimbingStairs) {
-                // === SAMO Z ===
-                movement.z = (diff.z > 0) ? speed : -speed;
-                currentMovementType = 1;
-
-                // Postavi rotaciju SAMO ako se promenio smer
-                if (lastMovementType[personId] != 1) {
-                    float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
-                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
-                }
-            }
-            else if (isClimbingStairs) {
-                // === Y + Z ===
+            // === PRIORITET SA JASNIM PRAGOVIMA ===
+            if (isClimbingStairs) {
+                // === Y + Z (penjanje stepenica) ===
                 glm::vec3 direction = glm::normalize(glm::vec3(0.0f, diff.y, diff.z));
                 movement = direction * speed;
                 currentMovementType = 2;
 
                 if (lastMovementType[personId] != 2) {
                     person.rotation.y = glm::radians(0.0f) + getYRotationForModel(person.modelIndex);
+                }
+            }
+            else if (abs(diff.z) > 0.1f) {
+                // === SAMO Z ===
+                movement.z = (diff.z > 0) ? speed : -speed;
+                currentMovementType = 1;
+
+                if (lastMovementType[personId] != 1) {
+                    float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
+                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
                 }
             }
             else if (abs(diff.x) > 0.1f) {
@@ -641,7 +641,8 @@ void updatePeople(float deltaTime) {
                 continue;
             }
 
-            bool isClimbingStairs = (abs(diff.y) > 0.1f && abs(diff.z) > 0.1f);
+            // Ista logika kao ENTERING
+            bool isClimbingStairs = (abs(diff.y) > 0.2f && abs(diff.z) > 0.2f);
 
             glm::vec3 movement = glm::vec3(0.0f);
             float speed = PERSON_WALK_SPEED * deltaTime;
@@ -650,21 +651,21 @@ void updatePeople(float deltaTime) {
             int personId = &person - &people[0];
             int currentMovementType = 0;
 
-            if (abs(diff.z) > 0.1f && !isClimbingStairs) {
-                movement.z = (diff.z > 0) ? speed : -speed;
-                currentMovementType = 1;
-
-                if (lastMovementTypeLeaving[personId] != 1) {
-                    float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
-                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
-                }
-            }
-            else if (isClimbingStairs) {
+            if (isClimbingStairs) {
                 glm::vec3 direction = glm::normalize(glm::vec3(0.0f, diff.y, diff.z));
                 movement = direction * speed;
                 currentMovementType = 2;
 
                 if (lastMovementTypeLeaving[personId] != 2) {
+                    float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
+                    person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
+                }
+            }
+            else if (abs(diff.z) > 0.1f) {
+                movement.z = (diff.z > 0) ? speed : -speed;
+                currentMovementType = 1;
+
+                if (lastMovementTypeLeaving[personId] != 1) {
                     float targetYaw = (diff.z > 0) ? glm::radians(0.0f) : glm::radians(180.0f);
                     person.rotation.y = targetYaw + getYRotationForModel(person.modelIndex);
                 }
@@ -732,6 +733,8 @@ int main(void)
     unsigned int doorInsideTex = preprocessTexture("res/textures/door_inside.jpg");
     unsigned int doorTopTex = preprocessTexture("res/textures/door_top.jpg");
     unsigned int doorBottomTex = preprocessTexture("res/textures/door_bottom.jpg");
+
+    unsigned int watermarkTex = preprocessTexture("res/textures/watermark.png");
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -905,6 +908,13 @@ int main(void)
         crosshairTex          // Tekstura
     );
 
+    RectangleData watermark = create2DOverlay(
+        -0.80375f, -0.8426f,
+        0.3125f, 0.1852f,         
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+        watermarkTex          
+    );
+
     // Uniforme
     glm::mat4 model = glm::mat4(1.0f);
     unsigned int modelLoc = glGetUniformLocation(unifiedShader, "uM");
@@ -1008,7 +1018,7 @@ int main(void)
 
             updatePeople(deltaTime);
 
-            if (glfwGetTime() - enteringStart > 5 + people.size() * SPAWN_INTERVAL) {
+            if (glfwGetTime() - enteringStart > 5 + people.size() * SPAWN_INTERVAL * 1.3) {
                 enteringStart = NULL;
                 cinema.SwitchState();
                 hasOpenedDoor = false;
@@ -1123,23 +1133,32 @@ int main(void)
             }
         }
 
+        glDisable(GL_DEPTH_TEST);
+
+        // Koristi UI shader umesto unifiedShader
+        glUseProgram(uiShader);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, watermarkTex);
+        glUniform1i(glGetUniformLocation(uiShader, "uTex"), 0);
+        glUniform1i(glGetUniformLocation(uiShader, "useTex"), 1);
+        glUniform1i(glGetUniformLocation(uiShader, "isWatermark"), 1);
+
+        drawRectangle(watermark);
+
         // --- CRTANJE CROSSHAIR-A ---
         if (cinema.GetCinemaState() == CinemaState::SELLING) {
-            glDisable(GL_DEPTH_TEST);
-
-            // Koristi UI shader umesto unifiedShader
-            glUseProgram(uiShader);
-
             // Aktiviraj teksturu
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, crosshairTex);
             glUniform1i(glGetUniformLocation(uiShader, "uTex"), 0);
             glUniform1i(glGetUniformLocation(uiShader, "useTex"), 1);
+            glUniform1i(glGetUniformLocation(uiShader, "isWatermark"), 0);
 
             drawRectangle(crosshair);
-
-            glEnable(GL_DEPTH_TEST);
         }
+
+        glEnable(GL_DEPTH_TEST);
 
         while (glfwGetTime() - startTime < 1.0 / 75) {}
         glfwSwapBuffers(window);

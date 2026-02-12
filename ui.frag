@@ -6,6 +6,7 @@ out vec4 outCol;
 
 uniform sampler2D uTex;
 uniform bool useTex;
+uniform bool isWatermark = false;
 
 void main()
 {
@@ -15,6 +16,9 @@ void main()
     else {
         outCol = texture(uTex, channelTex);
         // Za crosshair želimo transparentnost
+        if (isWatermark) {
+            outCol.a = 0.5;        
+        }
         if (outCol.a < 0.1) {
             discard;
         }
