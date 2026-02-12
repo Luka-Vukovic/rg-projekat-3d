@@ -240,6 +240,8 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 }
 
 bool numberKeysActive[10] = { false };
+static bool depthTestEnabled = true;
+static bool cullFaceEnabled = true;
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     for (int i = 1; i <= 9; i++) {
@@ -255,10 +257,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         }
     }
 
-    /*if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    }*/
-
     if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
         if (enteringStart == NULL && playingStart == NULL && leavingStart == NULL) {
             enteringStart = glfwGetTime();
@@ -266,6 +264,34 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             cinema.GetRandomTakenSeats();
             // peopleInitialized = false;
         }
+    }
+
+    if (key == GLFW_KEY_V && action == GLFW_PRESS) {
+        depthTestEnabled = true;
+        if (depthTestEnabled) glEnable(GL_DEPTH_TEST);
+        else glDisable(GL_DEPTH_TEST);
+        std::cout << "Depth test: ON" << std::endl;
+    }
+
+    if (key == GLFW_KEY_B && action == GLFW_PRESS) {
+        depthTestEnabled = false;
+        if (depthTestEnabled) glEnable(GL_DEPTH_TEST);
+        else glDisable(GL_DEPTH_TEST);
+        std::cout << "Depth test: OFF" << std::endl;
+    }
+
+    if (key == GLFW_KEY_N && action == GLFW_PRESS) {
+        cullFaceEnabled = true;
+        if (cullFaceEnabled) glEnable(GL_CULL_FACE);
+        else glDisable(GL_CULL_FACE);
+        std::cout << "Face culling: ON" << std::endl;
+    }
+
+    if (key == GLFW_KEY_M && action == GLFW_PRESS) {
+        cullFaceEnabled = false;
+        if (cullFaceEnabled) glEnable(GL_CULL_FACE);
+        else glDisable(GL_CULL_FACE);
+        std::cout << "Face culling: OFF" << std::endl;
     }
 }
 
@@ -366,14 +392,14 @@ bool isPositionValid(glm::vec3 pos) {
 std::vector<Person> people;
 
 float personSpawnTimer = 0.0f;
-const float SPAWN_INTERVAL = 0.3f; // Pola sekunde između ljudi
+const float SPAWN_INTERVAL = 0.3f;
 int nextPersonToSpawn = 0;
 bool allPeopleSpawned = false;
 
 // Konstante za kretanje
-const float PERSON_WALK_SPEED = 7.5f;  // Jedinice po sekundi
+const float PERSON_WALK_SPEED = 8.5f;  // Jedinice po sekundi
 const float PERSON_ROTATION_SPEED = 2.0f; // Radijani po sekundi
-const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 0.25f);
+const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 0.01f);
 
 void drawPerson(const Person& person, Model* model, Shader& shader,
     const glm::mat4& view, const glm::mat4& projection) {
@@ -448,7 +474,7 @@ float getScaleForModel(int modelIndex) {
 
 // Funkcija za dobijanje rotacije na osnovu modela
 float getYRotationForModel(int modelIndex) {
-    if (modelIndex >= 4 && modelIndex <= 12) return 1.5f;
+    if (modelIndex >= 4 && modelIndex < 12) return 1.5f;
     else if (modelIndex == 12) return -1.5f;
     return 0.0f;
 }
@@ -522,7 +548,7 @@ void initializePeople(const std::vector<std::pair<int, int>>& selectedSeats) {
     std::cout << "Initialized " << people.size() << " people" << std::endl;
 }
 
-// Update ljudi - SA PRECIZNIM THRESHOLD-IMA
+// Update ljudi - BEZ OSCILACIJA (zaustavi se kad stigneš blizu)
 void updatePeople(float deltaTime) {
     // Spawn timer
     if (!allPeopleSpawned) {
@@ -557,31 +583,37 @@ void updatePeople(float deltaTime) {
 
             glm::vec3 target = person.pathPoints[person.currentPathPoint];
             glm::vec3 diff = target - person.position;
+            float distance = glm::length(diff);
 
             float threshold = 0.3f;
 
-            if (glm::length(diff) < threshold) {
+            if (distance < threshold) {
+                // STIGLI SMO - prebaci na sledeći waypoint
                 person.currentPathPoint++;
                 continue;
             }
 
-            // === POBOLJŠANA DETEKCIJA PENJANJA ===
-            // Ako su OBE komponente značajne, to je penjanje
-            // Koristi VEĆE threshold-e za detekciju penjanja
-            bool isClimbingStairs = (abs(diff.y) > 0.2f && abs(diff.z) > 0.2f);
+            // === KLJUČNA IZMENA - OGRANIČI BRZINU ===
+            // Ako smo blizu, usporavaj da ne prođeš waypoint
+            float speed = PERSON_WALK_SPEED * deltaTime;
+            if (distance < speed) {
+                // Preblizu smo - pomeri se SAMO do waypoint-a
+                person.position = target;
+                person.currentPathPoint++;
+                continue;
+            }
 
             glm::vec3 movement = glm::vec3(0.0f);
-            float speed = PERSON_WALK_SPEED * deltaTime;
 
-            // Sačuvaj prethodni smer
+            // === Detekcija smera (bez hysteresis-a - jednostavnije) ===
             static std::map<int, int> lastMovementType;
             int personId = &person - &people[0];
-
             int currentMovementType = 0;
 
-            // === PRIORITET SA JASNIM PRAGOVIMA ===
-            if (isClimbingStairs) {
-                // === Y + Z (penjanje stepenica) ===
+            bool isClimbing = (abs(diff.y) > 0.2f && abs(diff.z) > 0.2f);
+
+            if (isClimbing) {
+                // Y + Z
                 glm::vec3 direction = glm::normalize(glm::vec3(0.0f, diff.y, diff.z));
                 movement = direction * speed;
                 currentMovementType = 2;
@@ -591,7 +623,7 @@ void updatePeople(float deltaTime) {
                 }
             }
             else if (abs(diff.z) > 0.1f) {
-                // === SAMO Z ===
+                // SAMO Z
                 movement.z = (diff.z > 0) ? speed : -speed;
                 currentMovementType = 1;
 
@@ -601,7 +633,7 @@ void updatePeople(float deltaTime) {
                 }
             }
             else if (abs(diff.x) > 0.1f) {
-                // === SAMO X ===
+                // SAMO X
                 movement.x = (diff.x > 0) ? speed : -speed;
                 currentMovementType = 3;
 
@@ -621,7 +653,7 @@ void updatePeople(float deltaTime) {
             person.state = Person::SITTING;
         }
 
-        // === LEAVING ===
+        // === LEAVING (ista logika) ===
         if (person.state == Person::LEAVING) {
             int reverseIdx = person.pathPoints.size() - 1 - person.currentPathPoint;
 
@@ -633,25 +665,32 @@ void updatePeople(float deltaTime) {
 
             glm::vec3 target = person.pathPoints[reverseIdx];
             glm::vec3 diff = target - person.position;
+            float distance = glm::length(diff);
 
             float threshold = 0.3f;
 
-            if (glm::length(diff) < threshold) {
+            if (distance < threshold) {
                 person.currentPathPoint++;
                 continue;
             }
 
-            // Ista logika kao ENTERING
-            bool isClimbingStairs = (abs(diff.y) > 0.2f && abs(diff.z) > 0.2f);
+            // OGRANIČI BRZINU
+            float speed = PERSON_WALK_SPEED * deltaTime;
+            if (distance < speed) {
+                person.position = target;
+                person.currentPathPoint++;
+                continue;
+            }
 
             glm::vec3 movement = glm::vec3(0.0f);
-            float speed = PERSON_WALK_SPEED * deltaTime;
 
             static std::map<int, int> lastMovementTypeLeaving;
             int personId = &person - &people[0];
             int currentMovementType = 0;
 
-            if (isClimbingStairs) {
+            bool isClimbing = (abs(diff.y) > 0.2f && abs(diff.z) > 0.2f);
+
+            if (isClimbing) {
                 glm::vec3 direction = glm::normalize(glm::vec3(0.0f, diff.y, diff.z));
                 movement = direction * speed;
                 currentMovementType = 2;
@@ -1018,7 +1057,7 @@ int main(void)
 
             updatePeople(deltaTime);
 
-            if (glfwGetTime() - enteringStart > 5 + people.size() * SPAWN_INTERVAL * 1.3) {
+            if (glfwGetTime() - enteringStart > 5 + people.size() * SPAWN_INTERVAL * 1.5) {
                 enteringStart = NULL;
                 cinema.SwitchState();
                 hasOpenedDoor = false;
@@ -1133,9 +1172,10 @@ int main(void)
             }
         }
 
+        bool wasDepthEnabled = glIsEnabled(GL_DEPTH_TEST);
         glDisable(GL_DEPTH_TEST);
 
-        // Koristi UI shader umesto unifiedShader
+        // Koristi UI shader
         glUseProgram(uiShader);
 
         glActiveTexture(GL_TEXTURE0);
@@ -1146,9 +1186,7 @@ int main(void)
 
         drawRectangle(watermark);
 
-        // --- CRTANJE CROSSHAIR-A ---
         if (cinema.GetCinemaState() == CinemaState::SELLING) {
-            // Aktiviraj teksturu
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, crosshairTex);
             glUniform1i(glGetUniformLocation(uiShader, "uTex"), 0);
@@ -1158,7 +1196,8 @@ int main(void)
             drawRectangle(crosshair);
         }
 
-        glEnable(GL_DEPTH_TEST);
+        // Vrati depth test na prethodno stanje
+        if (wasDepthEnabled) glEnable(GL_DEPTH_TEST);
 
         while (glfwGetTime() - startTime < 1.0 / 75) {}
         glfwSwapBuffers(window);
