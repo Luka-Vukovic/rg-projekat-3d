@@ -205,7 +205,6 @@ RectangleData createRectangle(glm::vec3 center, float width, float height,
         vertices.insert(vertices.end(), { normal.x, normal.y, normal.z });
     }
 
-    // Kreiranje VAO i VBO
     glGenVertexArrays(1, &rectangle.VAO);
     glBindVertexArray(rectangle.VAO);
 
@@ -311,7 +310,7 @@ StaircaseData createStaircase(float distanceFromScreen, float stepHeight, float 
     const float ROOM_FRONT_Z = roomFrontZ;
     const float ROOM_BACK_Z = ROOM_FRONT_Z + ROOM_DEPTH;
     const float SCREEN_Z = screenZ;
-    const float FLOOR_Y = floorY; // ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT
+    const float FLOOR_Y = floorY;
 
     // Boja za sve stepenice
     std::vector<glm::vec4> colors(6, stepColor);
@@ -327,12 +326,10 @@ StaircaseData createStaircase(float distanceFromScreen, float stepHeight, float 
             currentStepDepth = ROOM_DEPTH - currentZ + SCREEN_Z;
         }
 
-        // Kreiramo korak kao kvadar
-        // frontTopLeft je prednje gornje levo teme koraka
         glm::vec3 frontTopLeft = glm::vec3(
-            -ROOM_WIDTH / 2.0f,           // Leva strana prostorije
-            currentY + stepHeight,         // Vrh koraka
-            currentZ + currentStepDepth    // Prednja ivica koraka
+            -ROOM_WIDTH / 2.0f,           
+            currentY + stepHeight,        
+            currentZ + currentStepDepth    
         );
 
         CuboidData step = createCuboid(
@@ -347,19 +344,14 @@ StaircaseData createStaircase(float distanceFromScreen, float stepHeight, float 
 
         staircase.steps.push_back(step);
         
-        float subStepWidth = ROOM_WIDTH * 0.25f;  // 15% širine sobe
-        float subStepHeight = stepHeight * 0.5f;   // Polovina visine koraka
-        float subStepDepth = stepDepth * 0.5f;     // Polovina dubine koraka
-
-        // Međukorak je pozicioniran:
-        // - Na PREDNJOJ ivici glavnog koraka
-        // - Na LEVOJ strani (ili možeš promeniti za desnu)
-        // - Na pola visine do sledećeg koraka
+        float subStepWidth = ROOM_WIDTH * 0.25f;
+        float subStepHeight = stepHeight * 0.5f;  
+        float subStepDepth = stepDepth * 0.5f;    
 
         glm::vec3 subStepFrontTopLeft = glm::vec3(
-            -ROOM_WIDTH / 2.0f,                          // Levo
-            currentY + subStepHeight,       // Pola visine do sledećeg koraka
-            currentZ                      // Prednja ivica trenutnog koraka
+            -ROOM_WIDTH / 2.0f,                        
+            currentY + subStepHeight,      
+            currentZ                     
         );
 
         CuboidData subStep = createCuboid(

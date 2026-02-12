@@ -5,7 +5,6 @@
 Cinema::Cinema()
     : cinemaState(CinemaState::SELLING), movieFrame(0), frameCounter(0)
 {
-    // Sva sedišta su AVAILABLE na po?etku
     for (int r = 0; r < ROWS; r++) {
         for (int c = 0; c < COLS; c++) {
             seats[r][c] = SeatState::AVAILABLE;
@@ -174,7 +173,7 @@ void Cinema::IncreaseFrameCounter() {
     frameCounter = (frameCounter + 1) % 20;
     if (frameCounter == 0) {
         if (framePool.empty()) {
-            FillAndShufflePool(); // Ako smo "potrošili" film, mešaj opet
+            FillAndShufflePool();
         }
         movieFrame = framePool.back();
         framePool.pop_back();

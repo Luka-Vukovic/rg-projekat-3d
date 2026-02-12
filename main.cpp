@@ -49,14 +49,14 @@ const glm::vec3 ROOM_FRONT_TOP_LEFT = glm::vec3(-ROOM_WIDTH / 2, ROOM_HEIGHT - 2
 // PLATNO
 const float SCREEN_WIDTH = 16.33f;
 const float SCREEN_HEIGHT = 7.0f;
-const float SCREEN_Z = ROOM_FRONT_TOP_LEFT.z + 0.01f; // Skoro na zadnjem zidu
+const float SCREEN_Z = ROOM_FRONT_TOP_LEFT.z + 0.01f; 
 const glm::vec3 SCREEN_CENTER = glm::vec3(1.0f, ROOM_HEIGHT * 0.4f, SCREEN_Z);
 
 // STEPENIŠTE
-const int NUM_STEPS = 6;              // Broj stepenika
-const float STEP_HEIGHT = 0.7f;       // Visina svakog koraka
-const float STEP_DEPTH = 2.0f;        // Dužina svakog koraka
-const float DISTANCE_FROM_SCREEN = 9.5f; // Udaljenost prvog koraka od platna
+const int NUM_STEPS = 6;              
+const float STEP_HEIGHT = 0.7f;       
+const float STEP_DEPTH = 2.0f;        
+const float DISTANCE_FROM_SCREEN = 9.5f;
 
 // Slaba svetla za SELLING i PLAYING
 const glm::vec3 LIGHT_AMBIENT_DIM = glm::vec3(0.08f, 0.08f, 0.08f);
@@ -77,9 +77,9 @@ std::vector<Light> lights;
 
 // Pozicije svetla - levo, centralno, desno
 glm::vec3 screenLightPositions[3] = {
-    glm::vec3(SCREEN_CENTER.x - SCREEN_WIDTH * 0.33f, SCREEN_CENTER.y, SCREEN_Z + 2.5f),  // Levo
-    glm::vec3(SCREEN_CENTER.x,                         SCREEN_CENTER.y, SCREEN_Z + 2.5f),  // Centralno
-    glm::vec3(SCREEN_CENTER.x + SCREEN_WIDTH * 0.33f, SCREEN_CENTER.y, SCREEN_Z + 2.5f)   // Desno
+    glm::vec3(SCREEN_CENTER.x - SCREEN_WIDTH * 0.33f, SCREEN_CENTER.y, SCREEN_Z + 2.5f), 
+    glm::vec3(SCREEN_CENTER.x,                         SCREEN_CENTER.y, SCREEN_Z + 2.5f), 
+    glm::vec3(SCREEN_CENTER.x + SCREEN_WIDTH * 0.33f, SCREEN_CENTER.y, SCREEN_Z + 2.5f)  
 };
 
 int endProgram(std::string message) {
@@ -105,22 +105,18 @@ float yaw = -90.0f, pitch = 0.0f;
 glm::vec3 cameraPos = glm::vec3(0.0, 0.0, 2.0);;
 glm::vec3 cameraFront = glm::vec3(0.0, 0.0, -1.0);
 
-// Funkcija za ray casting - pronalazi na koju stolicu je kliknuto
 bool rayIntersectsChair(glm::vec3 rayOrigin, glm::vec3 rayDirection,
     glm::vec3 chairPos, float width, float height, float depth,
     int& row, int& col) {
-    // AABB (Axis-Aligned Bounding Box) test
-    // Izračunaj granice stolice
+
     glm::vec3 boxMin = glm::vec3(chairPos.x, chairPos.y - height, chairPos.z - depth);
     glm::vec3 boxMax = glm::vec3(chairPos.x + width, chairPos.y, chairPos.z);
 
     float tMin = 0.0f;
-    float tMax = 1000.0f;  // Maksimalna udaljenost
+    float tMax = 1000.0f; 
 
-    // Test za svaku osu
     for (int i = 0; i < 3; i++) {
         if (abs(rayDirection[i]) < 0.001f) {
-            // Ray je paralelan sa ovom ravni
             if (rayOrigin[i] < boxMin[i] || rayOrigin[i] > boxMax[i]) {
                 return false;
             }
@@ -249,7 +245,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             if (action == GLFW_PRESS && !numberKeysActive[i]) {
                 cinema.BuySeats(i);
                 numberKeysActive[i] = true;
-                needsChairUpdate = true;  // DODAJ OVO
+                needsChairUpdate = true;
             }
             else if (action == GLFW_RELEASE) {
                 numberKeysActive[i] = false;
@@ -262,7 +258,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             enteringStart = glfwGetTime();
             cinema.SwitchState();
             cinema.GetRandomTakenSeats();
-            // peopleInitialized = false;
         }
     }
 
@@ -297,7 +292,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
 // Funkcija za proveru da li je pozicija unutar prostorije
 bool isPositionValid(glm::vec3 pos) {
-    // Konstante za granice prostorije sa malim offsetom (0.5 jedinice od zida)
     const float MARGIN = 0.5f;
 
     float minX = -ROOM_WIDTH / 2.0f + MARGIN;
@@ -397,32 +391,28 @@ int nextPersonToSpawn = 0;
 bool allPeopleSpawned = false;
 
 // Konstante za kretanje
-const float PERSON_WALK_SPEED = 8.5f;  // Jedinice po sekundi
-const float PERSON_ROTATION_SPEED = 2.0f; // Radijani po sekundi
+const float PERSON_WALK_SPEED = 8.5f;
+const float PERSON_ROTATION_SPEED = 2.0f;
 const glm::vec3 DOOR_POSITION = glm::vec3(-8.6f, -1.8f, SCREEN_Z + 0.01f);
 
 void drawPerson(const Person& person, Model* model, Shader& shader,
     const glm::mat4& view, const glm::mat4& projection) {
     shader.use();
 
-    // Postavi matrices
     shader.setMat4("uV", view);
     shader.setMat4("uP", projection);
 
-    // Model matrica
     glm::mat4 modelMat = glm::mat4(1.0f);
     modelMat = glm::translate(modelMat, person.position);
-    modelMat = glm::rotate(modelMat, person.rotation.y, glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
-    modelMat = glm::rotate(modelMat, person.rotation.x, glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
-    modelMat = glm::rotate(modelMat, person.rotation.z, glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
+    modelMat = glm::rotate(modelMat, person.rotation.y, glm::vec3(0.0f, 1.0f, 0.0f)); 
+    modelMat = glm::rotate(modelMat, person.rotation.x, glm::vec3(1.0f, 0.0f, 0.0f)); 
+    modelMat = glm::rotate(modelMat, person.rotation.z, glm::vec3(0.0f, 0.0f, 1.0f)); 
     modelMat = glm::scale(modelMat, glm::vec3(person.scale));
 
     shader.setMat4("uM", modelMat);
 
-    // Lighting
     shader.setVec3("uViewPos", cameraPos);
 
-    // Postavi svetla (koristi isti lighting sistem kao za prostoriju)
     for (int i = 0; i < lights.size(); i++) {
         std::string base = "lights[" + std::to_string(i) + "]";
         shader.setVec3(base + ".position", lights[i].position);
@@ -435,11 +425,9 @@ void drawPerson(const Person& person, Model* model, Shader& shader,
     }
     shader.setInt("numLights", lights.size());
 
-    // Crtanje modela
     model->Draw(shader);
 }
 
-// Dodaj pre main():
 void updateLightsForState(std::vector<Light>& lights, CinemaState state) {
     glm::vec3 ambient, diffuse, specular;
 
@@ -449,7 +437,6 @@ void updateLightsForState(std::vector<Light>& lights, CinemaState state) {
         specular = LIGHT_SPECULAR_BRIGHT;
     }
     else {
-        // SELLING ili PLAYING - slaba svetla
         ambient = LIGHT_AMBIENT_DIM;
         diffuse = LIGHT_DIFFUSE_DIM;
         specular = LIGHT_SPECULAR_DIM;
@@ -479,7 +466,6 @@ float getYRotationForModel(int modelIndex) {
     return 0.0f;
 }
 
-// Kreiranje putanje do sedišta - 4 WAYPOINT-A (eksplicitno)
 std::vector<glm::vec3> createPathToSeat(int row, int col,
     const CinemaSeatsData& chairs) {
 
@@ -548,9 +534,7 @@ void initializePeople(const std::vector<std::pair<int, int>>& selectedSeats) {
     std::cout << "Initialized " << people.size() << " people" << std::endl;
 }
 
-// Update ljudi - BEZ OSCILACIJA (zaustavi se kad stigneš blizu)
 void updatePeople(float deltaTime) {
-    // Spawn timer
     if (!allPeopleSpawned) {
         personSpawnTimer += deltaTime;
 
@@ -568,13 +552,11 @@ void updatePeople(float deltaTime) {
         }
     }
 
-    // Update svake osobe
     for (auto& person : people) {
         if (person.state == Person::WAITING_TO_ENTER || person.state == Person::SITTING) {
             continue;
         }
 
-        // === ENTERING ===
         if (person.state == Person::ENTERING) {
             if (person.currentPathPoint >= person.pathPoints.size()) {
                 person.state = Person::TURNING_TO_SCREEN;
@@ -588,16 +570,12 @@ void updatePeople(float deltaTime) {
             float threshold = 0.3f;
 
             if (distance < threshold) {
-                // STIGLI SMO - prebaci na sledeći waypoint
                 person.currentPathPoint++;
                 continue;
             }
 
-            // === KLJUČNA IZMENA - OGRANIČI BRZINU ===
-            // Ako smo blizu, usporavaj da ne prođeš waypoint
             float speed = PERSON_WALK_SPEED * deltaTime;
             if (distance < speed) {
-                // Preblizu smo - pomeri se SAMO do waypoint-a
                 person.position = target;
                 person.currentPathPoint++;
                 continue;
@@ -605,7 +583,6 @@ void updatePeople(float deltaTime) {
 
             glm::vec3 movement = glm::vec3(0.0f);
 
-            // === Detekcija smera (bez hysteresis-a - jednostavnije) ===
             static std::map<int, int> lastMovementType;
             int personId = &person - &people[0];
             int currentMovementType = 0;
@@ -613,7 +590,6 @@ void updatePeople(float deltaTime) {
             bool isClimbing = (abs(diff.y) > 0.2f && abs(diff.z) > 0.2f);
 
             if (isClimbing) {
-                // Y + Z
                 glm::vec3 direction = glm::normalize(glm::vec3(0.0f, diff.y, diff.z));
                 movement = direction * speed;
                 currentMovementType = 2;
@@ -623,7 +599,6 @@ void updatePeople(float deltaTime) {
                 }
             }
             else if (abs(diff.z) > 0.1f) {
-                // SAMO Z
                 movement.z = (diff.z > 0) ? speed : -speed;
                 currentMovementType = 1;
 
@@ -633,7 +608,6 @@ void updatePeople(float deltaTime) {
                 }
             }
             else if (abs(diff.x) > 0.1f) {
-                // SAMO X
                 movement.x = (diff.x > 0) ? speed : -speed;
                 currentMovementType = 3;
 
@@ -647,13 +621,11 @@ void updatePeople(float deltaTime) {
             person.position += movement;
         }
 
-        // === OKRETANJE KA EKRANU ===
         if (person.state == Person::TURNING_TO_SCREEN) {
             person.rotation.y = glm::radians(180.0f) + getYRotationForModel(person.modelIndex);
             person.state = Person::SITTING;
         }
 
-        // === LEAVING (ista logika) ===
         if (person.state == Person::LEAVING) {
             int reverseIdx = person.pathPoints.size() - 1 - person.currentPathPoint;
 
@@ -674,7 +646,6 @@ void updatePeople(float deltaTime) {
                 continue;
             }
 
-            // OGRANIČI BRZINU
             float speed = PERSON_WALK_SPEED * deltaTime;
             if (distance < speed) {
                 person.position = target;
@@ -851,32 +822,32 @@ int main(void)
         false
     );
 
-    // Kreiranje platna (beli pravougaonik)
+    // Kreiranje platna 
     RectangleData screen = createRectangle(
         SCREEN_CENTER,
         SCREEN_WIDTH,
         SCREEN_HEIGHT,
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Bela boja
-        0,  // Bez teksture (možeš dodati teksturu kasnije)
-        true // Okrenut ka kameri
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        0, 
+        true 
     );
 
     RectangleData openedDoor = createRectangle(
         glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f),
         1.86f,
         2.4f,
-        glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), // Bela boja
-        0,  // Bez teksture (možeš dodati teksturu kasnije)
-        true // Okrenut ka kameri
+        glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), 
+        0, 
+        true 
     );
 
     RectangleData closedDoor = createRectangle(
         glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f),
         1.86f,
         2.4f,
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Bela boja
-        doorFullTex,  // Bez teksture (možeš dodati teksturu kasnije)
-        true // Okrenut ka kameri
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+        doorFullTex, 
+        true 
     );
 
     StaircaseData staircase = createStaircase(
@@ -919,7 +890,6 @@ int main(void)
     float lightZ2 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.5f;
     float lightZ3 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.75f;
 
-    // Čuvamo pozicije svetla za lakše ažuriranje
     std::vector<glm::vec3> lightPositions = {
         glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ1),
         glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ1),
@@ -941,10 +911,10 @@ int main(void)
     }
 
     RectangleData crosshair = create2DOverlay(
-        0.0f, 0.0f,           // Centar ekrana (NDC koordinate)
-        0.05f, 0.089f,         // Veličina (NDC koordinate - probaj različite vrednosti)
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Bela boja
-        crosshairTex          // Tekstura
+        0.0f, 0.0f,           
+        0.05f, 0.089f,        
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        crosshairTex       
     );
 
     RectangleData watermark = create2DOverlay(
@@ -992,11 +962,9 @@ int main(void)
             glfwSetWindowShouldClose(window, GL_TRUE);
         }
 
-        // Čuvamo staru poziciju pre nego što je promenimo
         glm::vec3 oldCameraPos = cameraPos;
         glm::vec3 newCameraPos = cameraPos;
 
-        // Kretanje kamere strelicama - kalkulišemo novu poziciju
         if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         {
             newCameraPos += speed * glm::normalize(glm::vec3(cameraFront.z, 0, -cameraFront.x));
@@ -1076,11 +1044,8 @@ int main(void)
                 cinema.SwitchState();
                 cinema.ResetFrameCounter();
                 screen.texture = 0;
-                //formDoorVAO(VAOdoor, VBOdoor, aspect);
-                //cinema.StandUp();
                 needsChairUpdate = true;
                 leavingStart = glfwGetTime();
-                //SetupPersonForExit();
             }
             else {
                 cinema.IncreaseFrameCounter();
@@ -1088,7 +1053,6 @@ int main(void)
             }
         }
         else if (leavingStart != NULL) {
-            // DODAJ OVO - ljudi izlaze
             for (auto& person : people) {
                 if (person.state == Person::SITTING) {
                     person.state = Person::LEAVING;
@@ -1104,7 +1068,7 @@ int main(void)
                 cinema.ResetSeats();
                 cinema.ResetSelectedSeats();
                 needsChairUpdate = true;
-                people.clear(); // Očisti sve
+                people.clear();
             }
         }
 
@@ -1161,7 +1125,6 @@ int main(void)
             glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);
         }
         else {
-            // Ako film ne traje, platno je obična bela površina
             glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
         }
         drawRectangle(screen);
@@ -1175,7 +1138,6 @@ int main(void)
         bool wasDepthEnabled = glIsEnabled(GL_DEPTH_TEST);
         glDisable(GL_DEPTH_TEST);
 
-        // Koristi UI shader
         glUseProgram(uiShader);
 
         glActiveTexture(GL_TEXTURE0);
@@ -1196,7 +1158,6 @@ int main(void)
             drawRectangle(crosshair);
         }
 
-        // Vrati depth test na prethodno stanje
         if (wasDepthEnabled) glEnable(GL_DEPTH_TEST);
 
         while (glfwGetTime() - startTime < 1.0 / 75) {}
@@ -1204,7 +1165,6 @@ int main(void)
         glfwPollEvents();
     }
 
-    // Čišćenje
     glDeleteBuffers(1, &room.VBO);
     glDeleteVertexArrays(1, &room.VAO);
     glDeleteBuffers(1, &screen.VBO);
