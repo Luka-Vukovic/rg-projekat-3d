@@ -379,3 +379,205 @@ void drawStaircase(const StaircaseData& staircase) {
         drawCuboid(step);
     }
 }
+
+// Funkcija za spajanje svih stepenica u JEDAN mesh
+StaircaseData createStaircaseMerged(float distanceFromScreen, float stepHeight, float stepDepth,
+    int numSteps, glm::vec4 stepColor,
+    float roomWidth, float roomHeight, float roomDepth, float roomFrontZ, float screenZ, float floorY) {
+
+    StaircaseData staircase;
+
+    const float ROOM_WIDTH = roomWidth;
+    const float ROOM_HEIGHT = roomHeight;
+    const float ROOM_DEPTH = roomDepth;
+    const float ROOM_FRONT_Z = roomFrontZ;
+    const float SCREEN_Z = screenZ;
+    const float FLOOR_Y = floorY;
+
+    // Boja za sve stepenice
+    std::vector<glm::vec4> colors(6, stepColor);
+
+    // === SPOJENI VERTEKSI ZA SVE KORAKE ===
+    std::vector<float> allVertices;
+
+    float currentZ = SCREEN_Z + distanceFromScreen;
+    float currentY = FLOOR_Y;
+
+    // Dimenzije međukoraka
+    float subStepWidth = ROOM_WIDTH * 0.25f;
+    float subStepHeight = stepHeight * 0.5f;
+    float subStepDepth = stepDepth * 0.5f;
+
+    for (int i = 0; i < numSteps; i++) {
+        float currentStepDepth = stepDepth;
+        if (i == numSteps - 1) {
+            currentStepDepth = ROOM_DEPTH - currentZ + SCREEN_Z;
+        }
+
+        // === GLAVNI KORAK ===
+        glm::vec3 frontTopLeft = glm::vec3(
+            -ROOM_WIDTH / 2.0f,
+            currentY + stepHeight,
+            currentZ + currentStepDepth
+        );
+
+        // Generiši vertekse za ovaj korak i dodaj ih u allVertices
+        // Kopiraj logiku iz createCuboid, ali umesto pravljenja VAO/VBO,
+        // samo dodaj vertekse u vektor
+
+        // 8 tačaka glavnog koraka
+        float x = frontTopLeft.x;
+        float y = frontTopLeft.y;
+        float z = frontTopLeft.z;
+        float w = ROOM_WIDTH;
+        float h = stepHeight;
+        float d = -currentStepDepth;
+
+        glm::vec3 ftl = frontTopLeft;
+        glm::vec3 ftr = glm::vec3(x + w, y, z);
+        glm::vec3 fbl = glm::vec3(x, y - h, z);
+        glm::vec3 fbr = glm::vec3(x + w, y - h, z);
+        glm::vec3 btl = glm::vec3(x, y, z + d);
+        glm::vec3 btr = glm::vec3(x + w, y, z + d);
+        glm::vec3 bbl = glm::vec3(x, y - h, z + d);
+        glm::vec3 bbr = glm::vec3(x + w, y - h, z + d);
+
+        // 6 strana × 4 vrha × (3 pos + 4 col + 2 tex + 3 nor) = 6*4*12 floata
+        std::vector<glm::vec3> faces[6] = {
+            {ftr, ftl, fbl, fbr},  // Front
+            {ftl, btl, bbl, fbl},  // Left
+            {fbr, fbl, bbl, bbr},  // Bottom
+            {btr, btl, ftl, ftr},  // Top
+            {btr, ftr, fbr, bbr},  // Right
+            {bbr, bbl, btl, btr}   // Back
+        };
+
+        glm::vec3 normals[6] = {
+            glm::vec3(0, 0, 1),   // Front
+            glm::vec3(-1, 0, 0),  // Left
+            glm::vec3(0, -1, 0),  // Bottom
+            glm::vec3(0, 1, 0),   // Top
+            glm::vec3(1, 0, 0),   // Right
+            glm::vec3(0, 0, -1)   // Back
+        };
+
+        std::vector<glm::vec2> texCoords = { {1,0}, {0,0}, {0,1}, {1,1} };
+
+        for (int f = 0; f < 6; f++) {
+            for (int v = 0; v < 4; v++) {
+                // Position
+                allVertices.push_back(faces[f][v].x);
+                allVertices.push_back(faces[f][v].y);
+                allVertices.push_back(faces[f][v].z);
+                // Color
+                allVertices.push_back(stepColor.r);
+                allVertices.push_back(stepColor.g);
+                allVertices.push_back(stepColor.b);
+                allVertices.push_back(stepColor.a);
+                // TexCoord
+                allVertices.push_back(texCoords[v].x);
+                allVertices.push_back(texCoords[v].y);
+                // Normal
+                allVertices.push_back(normals[f].x);
+                allVertices.push_back(normals[f].y);
+                allVertices.push_back(normals[f].z);
+            }
+        }
+
+        // === MEĐUKORAK (levi) ===
+        glm::vec3 subFrontTopLeft = glm::vec3(
+            -ROOM_WIDTH / 2.0f,
+            currentY + subStepHeight,
+            currentZ
+        );
+
+        x = subFrontTopLeft.x;
+        y = subFrontTopLeft.y;
+        z = subFrontTopLeft.z;
+        w = subStepWidth;
+        h = subStepHeight;
+        d = -subStepDepth;
+
+        ftl = subFrontTopLeft;
+        ftr = glm::vec3(x + w, y, z);
+        fbl = glm::vec3(x, y - h, z);
+        fbr = glm::vec3(x + w, y - h, z);
+        btl = glm::vec3(x, y, z + d);
+        btr = glm::vec3(x + w, y, z + d);
+        bbl = glm::vec3(x, y - h, z + d);
+        bbr = glm::vec3(x + w, y - h, z + d);
+
+        std::vector<glm::vec3> subFaces[6] = {
+            {ftr, ftl, fbl, fbr},
+            {ftl, btl, bbl, fbl},
+            {fbr, fbl, bbl, bbr},
+            {btr, btl, ftl, ftr},
+            {btr, ftr, fbr, bbr},
+            {bbr, bbl, btl, btr}
+        };
+
+        for (int f = 0; f < 6; f++) {
+            for (int v = 0; v < 4; v++) {
+                allVertices.push_back(subFaces[f][v].x);
+                allVertices.push_back(subFaces[f][v].y);
+                allVertices.push_back(subFaces[f][v].z);
+                allVertices.push_back(stepColor.r);
+                allVertices.push_back(stepColor.g);
+                allVertices.push_back(stepColor.b);
+                allVertices.push_back(stepColor.a);
+                allVertices.push_back(texCoords[v].x);
+                allVertices.push_back(texCoords[v].y);
+                allVertices.push_back(normals[f].x);
+                allVertices.push_back(normals[f].y);
+                allVertices.push_back(normals[f].z);
+            }
+        }
+
+        currentZ += stepDepth;
+        currentY += stepHeight;
+    }
+
+    // === KREIRAJ JEDAN VAO/VBO ZA SVE ===
+    CuboidData mergedStaircase;
+
+    glGenVertexArrays(1, &mergedStaircase.VAO);
+    glBindVertexArray(mergedStaircase.VAO);
+
+    glGenBuffers(1, &mergedStaircase.VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, mergedStaircase.VBO);
+    glBufferData(GL_ARRAY_BUFFER, allVertices.size() * sizeof(float), allVertices.data(), GL_STATIC_DRAW);
+
+    unsigned int stride = 12 * sizeof(float);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float)));
+    glEnableVertexAttribArray(3);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    mergedStaircase.vertexCount = allVertices.size() / 12; // 12 floata po vertexu
+
+    staircase.steps.push_back(mergedStaircase);
+
+    return staircase;
+}
+
+// Dodaj i novu funkciju za crtanje
+void drawStaircaseMerged(const StaircaseData& staircase) {
+    if (staircase.steps.empty()) return;
+
+    const CuboidData& merged = staircase.steps[0]; // Samo jedan step sada
+    glBindVertexArray(merged.VAO);
+
+    // Crtaj sve face-ove odjednom
+    int totalFaces = merged.vertexCount / 4; // 4 vrha po face-u
+    for (int i = 0; i < totalFaces; i++) {
+        glDrawArrays(GL_TRIANGLE_FAN, i * 4, 4);
+    }
+}

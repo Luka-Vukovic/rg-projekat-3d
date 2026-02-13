@@ -565,17 +565,20 @@ void updatePeople(float deltaTime) {
 
             glm::vec3 target = person.pathPoints[person.currentPathPoint];
             glm::vec3 diff = target - person.position;
-            float distance = glm::length(diff);
 
-            float threshold = 0.3f;
+            float distanceSq = glm::dot(diff, diff);
+            float thresholdSq = 0.3f * 0.3f; // 0.09
 
-            if (distance < threshold) {
+            if (distanceSq < thresholdSq) {
                 person.currentPathPoint++;
                 continue;
             }
 
             float speed = PERSON_WALK_SPEED * deltaTime;
-            if (distance < speed) {
+            float speedSq = speed * speed; // SQUARED speed
+
+            // Provera "ne prekorači waypoint" BEZ sqrt
+            if (distanceSq < speedSq) {
                 person.position = target;
                 person.currentPathPoint++;
                 continue;
@@ -637,17 +640,19 @@ void updatePeople(float deltaTime) {
 
             glm::vec3 target = person.pathPoints[reverseIdx];
             glm::vec3 diff = target - person.position;
-            float distance = glm::length(diff);
 
-            float threshold = 0.3f;
+            float distanceSq = glm::dot(diff, diff);
+            float thresholdSq = 0.3f * 0.3f;
 
-            if (distance < threshold) {
+            if (distanceSq < thresholdSq) {
                 person.currentPathPoint++;
                 continue;
             }
 
             float speed = PERSON_WALK_SPEED * deltaTime;
-            if (distance < speed) {
+            float speedSq = speed * speed; // SQUARED speed
+
+            if (distanceSq < speedSq) {
                 person.position = target;
                 person.currentPathPoint++;
                 continue;
@@ -732,18 +737,14 @@ int main(void)
     unsigned int availableChairTex = preprocessTexture("res/textures/blue_seat.jpg");
     unsigned int reservedChairTex = preprocessTexture("res/textures/yellow_seat.jpg");
     unsigned int boughtChairTex = preprocessTexture("res/textures/red_seat.jpg");
-
     unsigned int crosshairTex = preprocessTexture("res/textures/crosshair.png");
-
     unsigned int doorFullTex = preprocessTexture("res/textures/door_full.jpg");
-
     unsigned int doorLeftTex = preprocessTexture("res/textures/door_left_main.jpg");
     unsigned int doorRightTex = preprocessTexture("res/textures/door_right_main.jpg");
     unsigned int doorOutsideTex = preprocessTexture("res/textures/door_outside.jpg");
     unsigned int doorInsideTex = preprocessTexture("res/textures/door_inside.jpg");
     unsigned int doorTopTex = preprocessTexture("res/textures/door_top.jpg");
     unsigned int doorBottomTex = preprocessTexture("res/textures/door_bottom.jpg");
-
     unsigned int watermarkTex = preprocessTexture("res/textures/watermark.png");
 
     glEnable(GL_BLEND);
@@ -751,139 +752,73 @@ int main(void)
 
     // Kreiranje shadera
     unsigned int unifiedShader = createShader("basic.vert", "basic.frag");
-    glUseProgram(unifiedShader);
-    glUniform1i(glGetUniformLocation(unifiedShader, "uTex"), 0);
-
     unsigned int uiShader = createShader("ui.vert", "ui.frag");
-
-    // Kreiranje shader-a za modele
     modelShader = new Shader("model.vert", "model.frag");
 
+    // === KEŠIRANJE UNIFORM LOKACIJA ===
+    GLint uM_loc = glGetUniformLocation(unifiedShader, "uM");
+    GLint uV_loc = glGetUniformLocation(unifiedShader, "uV");
+    GLint uP_loc = glGetUniformLocation(unifiedShader, "uP");
+    GLint useTex_loc = glGetUniformLocation(unifiedShader, "useTex");
+    GLint transparent_loc = glGetUniformLocation(unifiedShader, "transparent");
+    GLint viewPos_loc = glGetUniformLocation(unifiedShader, "viewPos");
+    GLint useScreenLight_loc = glGetUniformLocation(unifiedShader, "useScreenLight");
+    GLint screenLightPositions_loc = glGetUniformLocation(unifiedShader, "screenLightPositions");
+    GLint screenLightColor_loc = glGetUniformLocation(unifiedShader, "screenLightColor");
+    GLint screenLightIntensity_loc = glGetUniformLocation(unifiedShader, "screenLightIntensity");
+    GLint screenLightRadius_loc = glGetUniformLocation(unifiedShader, "screenLightRadius");
+
+    // UI shader uniforms
+    GLint uiTex_loc = glGetUniformLocation(uiShader, "uTex");
+    GLint uiUseTex_loc = glGetUniformLocation(uiShader, "useTex");
+    GLint uiWatermark_loc = glGetUniformLocation(uiShader, "isWatermark");
+
     std::vector<std::string> modelNames = {
-    "hero.obj", "scientist.obj", "redneck.obj", "female_secretary.obj",
-    "PsxMan.obj", "PsxMan.obj", "PsxMan.obj", "PsxMan.obj",
-    "PsxMan.obj", "PsxMan.obj", "PsxMan.obj", "PsxMan.obj",
-    "mulder.obj", "oldMale_01.obj", "hunk.obj"
+        "hero.obj", "scientist.obj", "redneck.obj", "female_secretary.obj",
+        "PsxMan.obj", "PsxMan.obj", "PsxMan.obj", "PsxMan.obj",
+        "PsxMan.obj", "PsxMan.obj", "PsxMan.obj", "PsxMan.obj",
+        "mulder.obj", "oldMale_01.obj", "hunk.obj"
     };
 
     for (int i = 1; i <= 15; i++) {
-        std::string modelPath =
-            "res/models/lowpoly_person" + std::to_string(i) + "/" + modelNames[i - 1];
-
+        std::string modelPath = "res/models/lowpoly_person" + std::to_string(i) + "/" + modelNames[i - 1];
         try {
             Model* personModel = new Model(modelPath);
             peopleModels.push_back(personModel);
             std::cout << "Loaded model: " << modelPath << std::endl;
         }
         catch (const std::exception& e) {
-            std::cerr << "Failed to load model: " << modelPath
-                << " - " << e.what() << std::endl;
+            std::cerr << "Failed to load model: " << modelPath << " - " << e.what() << std::endl;
         }
     }
 
-    // Definisanje boja za svaku stranu KORISTEĆI GLOBALNE KONSTANTE
     std::vector<glm::vec4> roomColors = {
-        glm::vec4(0.32, 0.32, 0.32, 1.0),  // Prednja
-        glm::vec4(0.32, 0.1, 0.1, 1.0),    // Leva
-        glm::vec4(0.24, 0.16, 0.16, 1.0),  // Donja
-        glm::vec4(0.2, 0.2, 0.2, 1.0),     // Gornja
-        glm::vec4(0.32, 0.1, 0.1, 1.0),    // Desna
-        glm::vec4(0.32, 0.1, 0.1, 1.0)     // Zadnja
+        glm::vec4(0.32, 0.32, 0.32, 1.0),
+        glm::vec4(0.32, 0.1, 0.1, 1.0),
+        glm::vec4(0.24, 0.16, 0.16, 1.0),
+        glm::vec4(0.2, 0.2, 0.2, 1.0),
+        glm::vec4(0.32, 0.1, 0.1, 1.0),
+        glm::vec4(0.32, 0.1, 0.1, 1.0)
     };
 
-    // Kreiranje prostorije
-    CuboidData room = createCuboid(
-        ROOM_FRONT_TOP_LEFT,
-        ROOM_WIDTH,
-        ROOM_HEIGHT,
-        ROOM_DEPTH,
-        roomColors,
-        {},
-        true
-    );
+    CuboidData room = createCuboid(ROOM_FRONT_TOP_LEFT, ROOM_WIDTH, ROOM_HEIGHT, ROOM_DEPTH, roomColors, {}, true);
+    CuboidData leftDoor = createCuboid(glm::vec3(-9.53f, 0.4f, SCREEN_Z + 0.94f), 0.12f, 2.4f, 0.93f, roomColors,
+        { doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex }, false);
+    CuboidData rightDoor = createCuboid(glm::vec3(-7.79f, 0.4f, SCREEN_Z + 0.94f), 0.12f, 2.4f, 0.93f, roomColors,
+        { doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex }, false);
 
-    CuboidData leftDoor = createCuboid(
-        glm::vec3(-9.53f, 0.4f, SCREEN_Z + 0.94f),
-        0.12f,
-        2.4f,
-        0.93f,
-        roomColors,
-        { doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex },
-        false
-    );
+    RectangleData screen = createRectangle(SCREEN_CENTER, SCREEN_WIDTH, SCREEN_HEIGHT, glm::vec4(1.0f), 0, true);
+    RectangleData openedDoor = createRectangle(glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f), 1.86f, 2.4f, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), 0, true);
+    RectangleData closedDoor = createRectangle(glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f), 1.86f, 2.4f, glm::vec4(1.0f), doorFullTex, true);
 
-    CuboidData rightDoor = createCuboid(
-        glm::vec3(-7.79f, 0.4f, SCREEN_Z + 0.94f),
-        0.12f,
-        2.4f,
-        0.93f,
-        roomColors,
-        { doorInsideTex, doorLeftTex, doorBottomTex, doorTopTex, doorRightTex, doorOutsideTex },
-        false
-    );
+    StaircaseData staircase = createStaircaseMerged(DISTANCE_FROM_SCREEN, STEP_HEIGHT, STEP_DEPTH, NUM_STEPS,
+        glm::vec4(0.24, 0.16, 0.16, 1.0), ROOM_WIDTH, ROOM_HEIGHT, ROOM_DEPTH,
+        ROOM_FRONT_TOP_LEFT.z, SCREEN_Z, ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT);
 
-    // Kreiranje platna 
-    RectangleData screen = createRectangle(
-        SCREEN_CENTER,
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        0, 
-        true 
-    );
-
-    RectangleData openedDoor = createRectangle(
-        glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f),
-        1.86f,
-        2.4f,
-        glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), 
-        0, 
-        true 
-    );
-
-    RectangleData closedDoor = createRectangle(
-        glm::vec3(-8.6f, -0.8f, SCREEN_Z + 0.01f),
-        1.86f,
-        2.4f,
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
-        doorFullTex, 
-        true 
-    );
-
-    StaircaseData staircase = createStaircase(
-        DISTANCE_FROM_SCREEN,
-        STEP_HEIGHT,
-        STEP_DEPTH,
-        NUM_STEPS,
-        glm::vec4(0.24, 0.16, 0.16, 1.0),
-        ROOM_WIDTH,
-        ROOM_HEIGHT,
-        ROOM_DEPTH,
-        ROOM_FRONT_TOP_LEFT.z,
-        SCREEN_Z,
-        ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT
-    );
-
-    allChairs = createCinemaSeats(
-        cinema,
-        0.8f,                    // Širina stolice
-        1.2f,                    // Visina stolice
-        0.8f,                    // Dubina stolice
-        1.5f,                    // Razmak od desnog zida
-        0.3f,                    // Razmak između stolica
-        availableChairTex,       // Tekstura za dostupne stolice
-        reservedChairTex,        // Tekstura za rezervisane stolice
-        boughtChairTex,          // Tekstura za kupljene stolice
-        ROOM_WIDTH,
-        ROOM_HEIGHT,
-        ROOM_DEPTH,
-        ROOM_FRONT_TOP_LEFT.z,
-        SCREEN_Z,
-        ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT,
-        STEP_HEIGHT,
-        STEP_DEPTH,
-        DISTANCE_FROM_SCREEN
-    );
+    allChairs = createCinemaSeats(cinema, 0.8f, 1.2f, 0.8f, 1.5f, 0.3f,
+        availableChairTex, reservedChairTex, boughtChairTex,
+        ROOM_WIDTH, ROOM_HEIGHT, ROOM_DEPTH, ROOM_FRONT_TOP_LEFT.z, SCREEN_Z,
+        ROOM_FRONT_TOP_LEFT.y - ROOM_HEIGHT, STEP_HEIGHT, STEP_DEPTH, DISTANCE_FROM_SCREEN);
 
     float ceilingY = ROOM_FRONT_TOP_LEFT.y - 0.2f;
     float lightZ1 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.25f;
@@ -891,62 +826,34 @@ int main(void)
     float lightZ3 = ROOM_FRONT_TOP_LEFT.z + ROOM_DEPTH * 0.75f;
 
     std::vector<glm::vec3> lightPositions = {
-        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ1),
-        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ1),
-        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ2),
-        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ2),
-        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ3),
-        glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ3)
+        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ1), glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ1),
+        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ2), glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ2),
+        glm::vec3(-ROOM_WIDTH / 4, ceilingY, lightZ3), glm::vec3(ROOM_WIDTH / 4, ceilingY, lightZ3)
     };
 
-    // Inicijalno kreiranje svetla (SELLING = dim)
     for (const auto& pos : lightPositions) {
-        lights.push_back(Light(
-            pos,
-            LIGHT_AMBIENT_DIM,
-            LIGHT_DIFFUSE_DIM,
-            LIGHT_SPECULAR_DIM,
-            1.0f, 0.045f, 0.0075f
-        ));
+        lights.push_back(Light(pos, LIGHT_AMBIENT_DIM, LIGHT_DIFFUSE_DIM, LIGHT_SPECULAR_DIM, 1.0f, 0.045f, 0.0075f));
     }
 
-    RectangleData crosshair = create2DOverlay(
-        0.0f, 0.0f,           
-        0.05f, 0.089f,        
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        crosshairTex       
-    );
+    RectangleData crosshair = create2DOverlay(0.0f, 0.0f, 0.05f, 0.089f, glm::vec4(1.0f), crosshairTex);
+    RectangleData watermark = create2DOverlay(-0.80375f, -0.8426f, 0.3125f, 0.1852f, glm::vec4(1.0f), watermarkTex);
 
-    RectangleData watermark = create2DOverlay(
-        -0.80375f, -0.8426f,
-        0.3125f, 0.1852f,         
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
-        watermarkTex          
-    );
-
-    // Uniforme
     glm::mat4 model = glm::mat4(1.0f);
-    unsigned int modelLoc = glGetUniformLocation(unifiedShader, "uM");
-
     glm::vec3 cameraUp = glm::vec3(0.0, 1.0, 0.0);
-    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-    unsigned int viewLoc = glGetUniformLocation(unifiedShader, "uV");
-
-    glm::mat4 projectionP = glm::perspective(glm::radians(fov), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
-    unsigned int projectionLoc = glGetUniformLocation(unifiedShader, "uP");
-
-    // Render loop
-    glUseProgram(unifiedShader);
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projectionP));
 
     glClearColor(0.5, 0.5, 0.5, 1.0);
-
-    // Omogućavanje depth testiranja i face cullinga - standardno i efikasno
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
+
+    // === CACHE STATE ZA OPTIMIZACIJU ===
+    static glm::mat4 lastView = glm::mat4(0.0f);
+    static glm::mat4 lastProj = glm::mat4(0.0f);
+    static glm::vec3 lastCameraPos = glm::vec3(-999.0f);
+    static float lastFov = -1.0f;
+    static CinemaState lastLightState = CinemaState::SELLING;
+    static bool screenLightSet = false;
+    static bool lightsInitialized = false;
 
     bool hasOpenedDoor = false;
 
@@ -957,57 +864,46 @@ int main(void)
         float deltaTime = (float)(startTime - lastFrameTime);
         lastFrameTime = startTime;
 
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        {
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
             glfwSetWindowShouldClose(window, GL_TRUE);
         }
 
+        // === KRETANJE KAMERE ===
         glm::vec3 oldCameraPos = cameraPos;
         glm::vec3 newCameraPos = cameraPos;
 
-        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        {
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
             newCameraPos += speed * glm::normalize(glm::vec3(cameraFront.z, 0, -cameraFront.x));
         }
-        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        {
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
             newCameraPos -= speed * glm::normalize(glm::vec3(cameraFront.z, 0, -cameraFront.x));
         }
-        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        {
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
             newCameraPos += speed * glm::normalize(glm::vec3(cameraFront.x, cameraFront.y, cameraFront.z));
         }
-        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        {
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
             newCameraPos -= speed * glm::normalize(glm::vec3(cameraFront.x, cameraFront.y, cameraFront.z));
         }
 
-        // Provera validnosti nove pozicije
         if (isPositionValid(newCameraPos)) {
             cameraPos = newCameraPos;
         }
         else {
-            // Pokušaj da klizi duž zida - proveri X i Z odvojeno
             glm::vec3 tryX = glm::vec3(newCameraPos.x, oldCameraPos.y, oldCameraPos.z);
             glm::vec3 tryY = glm::vec3(oldCameraPos.x, newCameraPos.y, oldCameraPos.z);
             glm::vec3 tryZ = glm::vec3(oldCameraPos.x, oldCameraPos.y, newCameraPos.z);
 
-            if (isPositionValid(tryX)) {
-                cameraPos.x = newCameraPos.x;
-            }
-            if (isPositionValid(tryY)) {
-                cameraPos.y = newCameraPos.y;
-            }
-            if (isPositionValid(tryZ)) {
-                cameraPos.z = newCameraPos.z;
-            }
+            if (isPositionValid(tryX)) cameraPos.x = newCameraPos.x;
+            if (isPositionValid(tryY)) cameraPos.y = newCameraPos.y;
+            if (isPositionValid(tryZ)) cameraPos.z = newCameraPos.z;
         }
 
-        static CinemaState lastState = CinemaState::SELLING;
+        // === STATE MACHINE ===
         CinemaState currentState = cinema.GetCinemaState();
-        if (currentState != lastState) {
+        if (currentState != lastLightState) {
             updateLightsForState(lights, currentState);
-            lastState = currentState;
+            lastLightState = currentState;
+            lightsInitialized = false; // Reset lights cache
         }
 
         if (needsChairUpdate) {
@@ -1017,22 +913,20 @@ int main(void)
 
         if (enteringStart != NULL) {
             static bool peopleInitialized = false;
-
             if (!peopleInitialized) {
                 initializePeople(cinema.GetSelectedSeats());
                 peopleInitialized = true;
             }
-
             updatePeople(deltaTime);
 
-            if (glfwGetTime() - enteringStart > 5 + people.size() * SPAWN_INTERVAL * 1.5) {
+            if (glfwGetTime() - enteringStart > 5 + people.size() * SPAWN_INTERVAL * 1.65) {
                 enteringStart = NULL;
                 cinema.SwitchState();
                 hasOpenedDoor = false;
                 cinema.SitOnSeats();
                 needsChairUpdate = true;
                 playingStart = glfwGetTime();
-                peopleInitialized = false; // RESETUJ ZA SLEDEĆI PUT
+                peopleInitialized = false;
             }
             else if (!hasOpenedDoor) {
                 hasOpenedDoor = true;
@@ -1046,6 +940,7 @@ int main(void)
                 screen.texture = 0;
                 needsChairUpdate = true;
                 leavingStart = glfwGetTime();
+                screenLightSet = false; // Reset screen light
             }
             else {
                 cinema.IncreaseFrameCounter();
@@ -1059,10 +954,9 @@ int main(void)
                     person.currentPathPoint = 0;
                 }
             }
-
             updatePeople(deltaTime);
 
-            if (glfwGetTime() - leavingStart > 5 + people.size() * SPAWN_INTERVAL) {
+            if (glfwGetTime() - leavingStart > 5 + people.size() * SPAWN_INTERVAL * 0.85) {
                 leavingStart = NULL;
                 cinema.SwitchState();
                 cinema.ResetSeats();
@@ -1074,87 +968,113 @@ int main(void)
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // === RENDERING - SA KEŠIRANIM UNIFORMIMA ===
         glUseProgram(unifiedShader);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
-        view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-
-        projectionP = glm::perspective(glm::radians(fov), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
-        glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projectionP));
-
-        glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
-        glUniform1i(glGetUniformLocation(unifiedShader, "transparent"), 0);
-
-        setLightsUniforms(unifiedShader, lights);
-        glUniform3fv(glGetUniformLocation(unifiedShader, "viewPos"), 1, &cameraPos[0]);
-
-        // Screen light - samo aktivno kad je PLAYING
-        if (playingStart != NULL) {
-            glUniform1i(glGetUniformLocation(unifiedShader, "useScreenLight"), 1);
-            glUniform3fv(glGetUniformLocation(unifiedShader, "screenLightPositions"), 3, &screenLightPositions[0][0]);
-            glUniform3fv(glGetUniformLocation(unifiedShader, "screenLightColor"), 1, &SCREEN_LIGHT_COLOR[0]);
-            glUniform1f(glGetUniformLocation(unifiedShader, "screenLightIntensity"), SCREEN_LIGHT_INTENSITY);
-            glUniform1f(glGetUniformLocation(unifiedShader, "screenLightRadius"), SCREEN_LIGHT_RADIUS);
-        }
-        else {
-            glUniform1i(glGetUniformLocation(unifiedShader, "useScreenLight"), 0);
+        // Model matrica - POSTAVI JEDNOM (ne menja se)
+        static bool modelSet = false;
+        if (!modelSet) {
+            glUniformMatrix4fv(uM_loc, 1, GL_FALSE, glm::value_ptr(model));
+            modelSet = true;
         }
 
-        // Crtanje prostorije
-        glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
+        // View matrica - SAMO AKO SE PROMENILA
+        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        if (view != lastView) {
+            glUniformMatrix4fv(uV_loc, 1, GL_FALSE, glm::value_ptr(view));
+            lastView = view;
+        }
+
+        // Projection matrica - SAMO AKO SE FOV PROMENIO
+        if (fov != lastFov) {
+            glm::mat4 projectionP = glm::perspective(glm::radians(fov), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
+            glUniformMatrix4fv(uP_loc, 1, GL_FALSE, glm::value_ptr(projectionP));
+            lastProj = projectionP;
+            lastFov = fov;
+        }
+
+        // ViewPos - SAMO AKO SE KAMERA POMERILA
+        if (cameraPos != lastCameraPos) {
+            glUniform3fv(viewPos_loc, 1, &cameraPos[0]);
+            lastCameraPos = cameraPos;
+        }
+
+        // Svetla - POSTAVI SAMO JEDNOM ili kad se promene
+        if (!lightsInitialized) {
+            setLightsUniforms(unifiedShader, lights);
+            lightsInitialized = true;
+        }
+
+        // Screen light - POSTAVI JEDNOM KAD SE AKTIVIRA
+        if (currentState == CinemaState::PLAYING && !screenLightSet) {
+            glUniform1i(useScreenLight_loc, 1);
+            glUniform3fv(screenLightPositions_loc, 3, &screenLightPositions[0][0]);
+            glUniform3fv(screenLightColor_loc, 1, &SCREEN_LIGHT_COLOR[0]);
+            glUniform1f(screenLightIntensity_loc, SCREEN_LIGHT_INTENSITY);
+            glUniform1f(screenLightRadius_loc, SCREEN_LIGHT_RADIUS);
+            screenLightSet = true;
+        }
+        else if (currentState != CinemaState::PLAYING && screenLightSet) {
+            glUniform1i(useScreenLight_loc, 0);
+            screenLightSet = false;
+        }
+
+        // Transparent - POSTAVI JEDNOM (nikad se ne menja)
+        static bool transparentSet = false;
+        if (!transparentSet) {
+            glUniform1i(transparent_loc, 0);
+            transparentSet = true;
+        }
+
+        // === CRTANJE - grupišemo po teksturama ===
+        glUniform1i(useTex_loc, 0);
         drawCuboid(room);
+        drawStaircaseMerged(staircase);
 
-        // Crtanje stepeništa
-        drawStaircase(staircase);
-
-        glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);
+        glUniform1i(useTex_loc, 1);
         drawCinemaSeats(allChairs);
 
-        if ((cinema.GetCinemaState() == CinemaState::SELLING) || (cinema.GetCinemaState() == CinemaState::PLAYING)) {
+        // Vrata
+        CinemaState state = cinema.GetCinemaState();
+        if (state == CinemaState::SELLING || state == CinemaState::PLAYING) {
             drawRectangle(closedDoor);
         }
         else {
             drawCuboid(leftDoor);
             drawCuboid(rightDoor);
-            glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
+            glUniform1i(useTex_loc, 0);
             drawRectangle(openedDoor);
         }
 
-        if (playingStart != NULL) {
-            glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 1);
-        }
-        else {
-            glUniform1i(glGetUniformLocation(unifiedShader, "useTex"), 0);
-        }
+        // Screen
+        glUniform1i(useTex_loc, (playingStart != NULL) ? 1 : 0);
         drawRectangle(screen);
 
+        // === LJUDI ===
         for (const auto& person : people) {
             if (person.state != Person::WAITING_TO_ENTER) {
-                drawPerson(person, peopleModels[person.modelIndex], *modelShader, view, projectionP);
+                drawPerson(person, peopleModels[person.modelIndex], *modelShader, view, lastProj);
             }
         }
 
+        // === UI RENDERING ===
         bool wasDepthEnabled = glIsEnabled(GL_DEPTH_TEST);
         glDisable(GL_DEPTH_TEST);
 
         glUseProgram(uiShader);
-
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, watermarkTex);
-        glUniform1i(glGetUniformLocation(uiShader, "uTex"), 0);
-        glUniform1i(glGetUniformLocation(uiShader, "useTex"), 1);
-        glUniform1i(glGetUniformLocation(uiShader, "isWatermark"), 1);
 
+        // Watermark
+        glBindTexture(GL_TEXTURE_2D, watermarkTex);
+        glUniform1i(uiTex_loc, 0);
+        glUniform1i(uiUseTex_loc, 1);
+        glUniform1i(uiWatermark_loc, 1);
         drawRectangle(watermark);
 
-        if (cinema.GetCinemaState() == CinemaState::SELLING) {
-            glActiveTexture(GL_TEXTURE0);
+        // Crosshair
+        if (state == CinemaState::SELLING) {
             glBindTexture(GL_TEXTURE_2D, crosshairTex);
-            glUniform1i(glGetUniformLocation(uiShader, "uTex"), 0);
-            glUniform1i(glGetUniformLocation(uiShader, "useTex"), 1);
-            glUniform1i(glGetUniformLocation(uiShader, "isWatermark"), 0);
-
+            glUniform1i(uiWatermark_loc, 0);
             drawRectangle(crosshair);
         }
 
@@ -1165,11 +1085,14 @@ int main(void)
         glfwPollEvents();
     }
 
+    // === CLEANUP ===
     glDeleteBuffers(1, &room.VBO);
     glDeleteVertexArrays(1, &room.VAO);
     glDeleteBuffers(1, &screen.VBO);
     glDeleteVertexArrays(1, &screen.VAO);
     glDeleteProgram(unifiedShader);
+    glDeleteProgram(uiShader);
+
     for (auto& step : staircase.steps) {
         glDeleteBuffers(1, &step.VBO);
         glDeleteVertexArrays(1, &step.VAO);

@@ -13,6 +13,7 @@ struct CuboidData {
     unsigned int VAO;
     unsigned int VBO;
     unsigned int textures[6];
+    int vertexCount = 24;
 };
 
 CuboidData createCuboid(glm::vec3 frontTopLeft, float width, float height, float depth,
@@ -48,6 +49,12 @@ StaircaseData createStaircase(float distanceFromScreen, float stepHeight, float 
     float roomWidth, float roomHeight, float roomDepth, float roomFrontZ, float screenZ, float floorY);
 
 void drawStaircase(const StaircaseData& staircase);
+
+StaircaseData createStaircaseMerged(float distanceFromScreen, float stepHeight, float stepDepth,
+    int numSteps, glm::vec4 stepColor,
+    float roomWidth, float roomHeight, float roomDepth, float roomFrontZ, float screenZ, float floorY);
+
+void drawStaircaseMerged(const StaircaseData& staircase);
 
 #endif
 #pragma once
